@@ -311,17 +311,19 @@ Item {
                     }
                 }
 
-                // Stage indicators
+                // Stage indicators — fixed count to avoid Repeater rebuild flicker
                 Repeater {
-                    model: backend ? backend.stages : []
+                    model: 6
 
                     StageIndicator {
+                        required property int index
+                        readonly property var s: (backend && backend.stages.length > index) ? backend.stages[index] : null
                         Layout.fillWidth: true
-                        stageKey: modelData.key
-                        label: modelData.label
-                        status: modelData.status
-                        progress: modelData.progress
-                        detail: modelData.detail
+                        stageKey: s ? s.key : ""
+                        label: s ? s.label : ""
+                        status: s ? s.status : "pending"
+                        progress: s ? s.progress : 0.0
+                        detail: s ? s.detail : ""
                         onOpenFolderClicked: function(key) {
                             if (backend) backend.openStageFolder(key)
                         }
