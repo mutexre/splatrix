@@ -164,7 +164,13 @@ class AppController(QObject):
             return {}
         try:
             with open(SESSION_FILE) as f:
-                return json.load(f)
+                data = json.load(f)
+            # Migrate old format (plain list of dirs) → new dict format
+            if isinstance(data, list):
+                return {"open_projects": data}
+            if isinstance(data, dict):
+                return data
+            return {}
         except Exception:
             return {}
 
