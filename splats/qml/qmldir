@@ -1,0 +1,11 @@
+module Splats
+
+singleton Theme 1.0 Theme.qml
+Icon 1.0 Icon.qml
+StageIndicator 1.0 StageIndicator.qml
+SectionCard 1.0 SectionCard.qml
+IconButton 1.0 IconButton.qml
+PipelineTab 1.0 PipelineTab.qml
+VideoTab 1.0 VideoTab.qml
+ViewerTab 1.0 ViewerTab.qml
+LogTab 1.0 LogTab.qml
