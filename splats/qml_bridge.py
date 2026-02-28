@@ -129,6 +129,7 @@ class Backend(QObject):
             self._max_frames = v
             self.maxFramesChanged.emit()
             self._save_settings()
+            self._auto_save_project()
 
     @pyqtProperty(int, notify=trainingIterationsChanged)
     def trainingIterations(self):
@@ -140,6 +141,7 @@ class Backend(QObject):
             self._training_iterations = v
             self.trainingIterationsChanged.emit()
             self._save_settings()
+            self._auto_save_project()
 
     @pyqtProperty(int, notify=reconstructionMethodChanged)
     def reconstructionMethod(self):
@@ -151,6 +153,7 @@ class Backend(QObject):
             self._reconstruction_method = v
             self.reconstructionMethodChanged.emit()
             self._save_settings()
+            self._auto_save_project()
 
     @pyqtProperty(str, notify=projectDirChanged)
     def projectDir(self):
@@ -246,6 +249,7 @@ class Backend(QObject):
                 self._log(f"Error loading video metadata: {e}")
 
             self._save_settings()
+            self._auto_save_project()
             self._update_button_states()
 
     @pyqtSlot(str)
