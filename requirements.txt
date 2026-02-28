@@ -1,0 +1,27 @@
+# UI
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+psutil>=5.9.0
+PyYAML>=6.0
+
+# Computer Vision & Data
+opencv-python>=4.8.0
+numpy>=1.24.0
+pillow>=10.0.0
+
+# 3D Processing
+plyfile>=1.0.0
+
+# Nerfstudio (3D Reconstruction & Gaussian Splatting)
+nerfstudio>=1.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+# tinycudann>=1.7  # Optional - advanced features
+
+# Optional: PyAV video processor (alternative to nerfstudio's ffmpeg subprocess)
+# Uncomment if you want frame-by-frame progress tracking with PyAVVideoProcessor
+# av>=10.0.0
+# scipy>=1.10.0
+
+# System dependencies (install via conda):
+# conda install -c conda-forge ffmpeg colmap

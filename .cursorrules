@@ -1,0 +1,139 @@
+# Splats project - AI Assistant Rules
+
+## Communication Style
+**MANDATORY**: Use concise military-style communication throughout all sessions.
+- Direct, efficient responses
+- No unnecessary explanations
+- Use "Roger", "Acknowledged", "Task accomplished", etc.
+- Don't use SIR, etc.
+- Status-first reporting: "Completed X. Found Y. Next: Z."
+- No emojis unless explicitly requested
+
+## Core Project Rules (MANDATORY)
+
+### 1. Simplicity & Extensibility
+- Ask before implementing mid/large changes, especially when removing existing code
+- If solution not 100% known, investigate first (print statements, debugging)
+- Create branch for every bugfix/feature. Main branch must be stable.
+- Generic base classes: Create extensible bases (`BaseImageToImageDataset`, `BaseImageToImageModel`)
+- Prefer composition over subclassing
+- Simple is better - prioritize maintainability and readability
+- Support metadata/configs for generic dataset/task handling
+- Lazy loading of heavy resources (discover from disk when needed)
+- Use memory caching where appropriate
+- Don't hardcode task-specific assumptions
+- Don't assume dependencies if not needed for current task
+- Every rule has an exception.
+
+### 3. UI Responsiveness (CRITICAL)
+**RULE**: UI must remain interactive at all times. No blocking operations in UI thread.
+- All operations >100ms MUST run asynchronously
+- Use Python async/await or QThread for long-running tasks
+- Never call blocking I/O from UI event handlers
+- Never perform heavy computations in UI thread callbacks
+- Use `pyqtSignal` for thread-safe progress updates
+- Progress updates must be real-time and quantitative
+
+**Forbidden patterns**:
+```python
+# ❌ WRONG: Blocks UI thread
+def on_button_click(self):
+    result = heavy_computation()
+    self.label.setText(str(result))
+```
+
+**Correct pattern**:
+```python
+# ✅ CORRECT: Async in background thread
+class WorkerThread(QThread):
+    progress = pyqtSignal(dict)
+    finished = pyqtSignal()
+    
+    def run(self):
+        # Heavy work here
+        for item in items:
+            result = process(item)
+            self.progress.emit({'current': item})
+```
+
+### 4. Button State Management
+**RULE**: Disable buttons when their actions cannot be executed.
+Examples:
+  - Disable "Start Training" when no dataset available
+  - Disable "Run Inference" when required inputs missing
+  - Disable "Stop" when no operation running
+
+- Enable buttons ONLY when prerequisites met
+- Update button states immediately on state changes
+
+## Project Structure
+
+## Technology Stack
+- **Python 3.10+** with type hints
+- **PyQt6** for UI (migration to QML planned)
+- **pyqtgraph** for real-time plotting
+- **asyncio** for async operations
+- **Conda** environment: `splats`
+- ** Everything else which is required for splats
+
+## Coding Patterns
+
+## AI Assistant Behavior
+
+### When Working
+1. Read relevant docs FIRST if uncertain
+2. Investigate before implementing (use grep, codebase_search)
+3. Fix errors immediately when introduced
+4. Test button states when modifying UI
+5. Check linter after file edits
+6. Keep working until task complete (don't stop to ask permission)
+7. Create TODOs for complex multi-step tasks
+8. Update TODOs as work progresses
+
+### When Uncertain
+1. Ask clarifying questions (concisely)
+2. Propose approach before large changes
+3. Reference PROJECT_RULES or UI_DEVELOPMENT_MANIFEST
+
+### File Operations
+- Don't use cat/sed/awk for file reading/editing (use read_file, search_replace)
+- Run commands in sandbox when possible
+- Request permissions (git_write, network) only when needed
+
+### Documentation Policy
+**RULE**: Minimize documentation overhead. User doesn't read extensive docs.
+
+**Write documents ONLY for**:
+- Critical architecture decisions that affect multiple files
+- Non-obvious technical solutions that will be needed again
+- Setup/installation steps that must be reproduced
+
+**DO NOT write**:
+- FIX_*.md for every bug fix
+- DEBUG_*.md for troubleshooting steps
+- Detailed changelogs
+- Approach comparison documents (unless explicitly requested)
+- Documents that duplicate code comments
+
+**Instead**:
+- Put critical info in code comments
+- Update README.md for major features
+- Use inline documentation
+- Explain in chat response, don't create file
+
+## Quick Commands
+
+### Run UI
+```bash
+conda activate splats
+cd /home/alexander.obuschenko/Projects/splats
+python -m splats.main_window
+# or
+python run.py
+```
+
+---
+
+**Last Updated**: 2025-12-11
+**Review Before**: Every major change to UI, trainer, or dataset code
+

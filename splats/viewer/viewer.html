@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gaussian Splat Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        #info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 11px;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 18px;
+        }
+        .error {
+            color: #ff5555;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+    
+    <div id="controls">
+        <div><strong>Controls:</strong></div>
+        <div>• Left drag: Rotate</div>
+        <div>• Right drag: Pan</div>
+        <div>• Wheel: Zoom</div>
+    </div>
+    
+    <div id="info">
+        <div id="status">Ready</div>
+        <div id="stats"></div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/OrbitControls.js';
+        import { PLYLoader } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/loaders/PLYLoader.js';
+
+        const statusEl = document.getElementById('status');
+        const statsEl = document.getElementById('stats');
+        const canvas = document.getElementById('canvas');
+
+        // Get PLY path from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const plyPath = urlParams.get('ply');
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(0, 0, 5);
+
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: canvas,
+            antialias: true,
+            alpha: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 0.1;
+        controls.maxDistance = 500;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+        scene.add(gridHelper);
+
+        // Load PLY
+        const loader = new PLYLoader();
+
+        if (!plyPath) {
+            statusEl.textContent = 'No PLY loaded — run pipeline or open a project';
+        } else {
+            statusEl.textContent = 'Loading PLY...';
+        }
+
+        if (plyPath) { loader.load(
+            plyPath,
+            (geometry) => {
+                statusEl.textContent = 'Loaded successfully';
+                
+                // Count vertices
+                const vertexCount = geometry.attributes.position.count;
+                statsEl.textContent = `Gaussians: ${vertexCount.toLocaleString()}`;
+
+                // Create material
+                const material = new THREE.PointsMaterial({
+                    size: 0.02,
+                    vertexColors: true,
+                    sizeAttenuation: true
+                });
+
+                // Check if colors exist
+                if (!geometry.attributes.color) {
+                    // No colors - use white
+                    const colors = new Float32Array(vertexCount * 3);
+                    for (let i = 0; i < vertexCount * 3; i++) {
+                        colors[i] = 1.0;
+                    }
+                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                }
+
+                // Create points mesh
+                const points = new THREE.Points(geometry, material);
+                scene.add(points);
+
+                // Center geometry
+                geometry.computeBoundingBox();
+                const bbox = geometry.boundingBox;
+                const center = new THREE.Vector3();
+                bbox.getCenter(center);
+                points.position.sub(center);
+
+                // Adjust camera
+                const size = bbox.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(maxDim, maxDim * 0.5, maxDim);
+                controls.target.set(0, 0, 0);
+                controls.update();
+
+                console.log('PLY loaded:', {
+                    vertices: vertexCount,
+                    size: size,
+                    center: center
+                });
+            },
+            (xhr) => {
+                const percent = (xhr.loaded / xhr.total * 100).toFixed(1);
+                statusEl.textContent = `Loading: ${percent}%`;
+            },
+            (error) => {
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.className = 'error';
+                console.error('PLY loading error:', error);
+            }
+        ); }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Expose to Qt bridge
+        window.loadPLY = function(path) {
+            statusEl.textContent = 'Loading new PLY...';
+            statsEl.textContent = '';
+            
+            // Clear existing points
+            scene.children = scene.children.filter(
+                child => !(child instanceof THREE.Points)
+            );
+            
+            loader.load(path, (geometry) => {
+                const vertexCount = geometry.attributes.position.count;
+                statsEl.textContent = `Gaussians: ${vertexCount.toLocaleString()}`;
+                
+                const material = new THREE.PointsMaterial({
+                    size: 0.02,
+                    vertexColors: true,
+                    sizeAttenuation: true
+                });
+                
+                if (!geometry.attributes.color) {
+                    const colors = new Float32Array(vertexCount * 3);
+                    for (let i = 0; i < vertexCount * 3; i++) {
+                        colors[i] = 1.0;
+                    }
+                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                }
+                
+                const points = new THREE.Points(geometry, material);
+                scene.add(points);
+                
+                geometry.computeBoundingBox();
+                const bbox = geometry.boundingBox;
+                const center = new THREE.Vector3();
+                bbox.getCenter(center);
+                points.position.sub(center);
+                
+                statusEl.textContent = 'Loaded';
+            });
+        };
+    </script>
+</body>
+</html>
