@@ -13,6 +13,11 @@ ApplicationWindow {
     title: backend ? backend.windowTitle : "Video to Gaussian Splats"
     color: Theme.bg
 
+    onClosing: function(close) {
+        if (backend) backend.windowClosing()
+        close.accepted = true
+    }
+
     // ── Header bar ──────────────────────────────────────────
     header: Rectangle {
         height: 44

@@ -292,25 +292,6 @@ Item {
             SectionCard {
                 title: "Pipeline Progress"
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacing
-
-                    Text {
-                        text: "Status:"
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSizeSm
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        text: backend ? backend.statusText : "Ready"
-                        color: Theme.text
-                        font.pixelSize: Theme.fontSizeSm
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
-                }
-
                 // Stage indicators — fixed count to avoid Repeater rebuild flicker
                 Repeater {
                     model: 6
@@ -351,13 +332,12 @@ Item {
             color: Theme.borderSubtle
         }
 
-        RowLayout {
+        Row {
             id: buttonRow
             anchors {
-                left: parent.left; right: parent.right
+                left: parent.left
                 verticalCenter: parent.verticalCenter
                 leftMargin: Theme.spacingLg
-                rightMargin: Theme.spacingLg
             }
             spacing: Theme.spacing
 
@@ -366,7 +346,6 @@ Item {
                 variant: "primary"
                 iconName: "play"
                 enabled: backend ? (backend.hasVideo && !backend.isProcessing) : false
-                Layout.fillWidth: true
                 onClicked: backend.startConversion()
             }
 
@@ -383,13 +362,6 @@ Item {
                 iconName: "square"
                 enabled: backend ? backend.isProcessing : false
                 onClicked: backend.cancel()
-            }
-
-            IconButton {
-                text: "Clear"
-                iconName: "trash"
-                enabled: backend ? !backend.isProcessing : true
-                onClicked: backend.clear()
             }
         }
     }

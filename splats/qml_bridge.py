@@ -32,7 +32,11 @@ STAGE_DEFS = [
 
 
 class Backend(QObject):
-    """Single QObject that QML binds to via 'backend' context property."""
+    """Per-window QObject that QML binds to via 'backend' context property.
+
+    Each project window gets its own Backend instance.  The optional
+    *controller* reference is used to spawn / close windows.
+    """
 
     # ── Signals for property change notifications ──
     videoNameChanged = pyqtSignal()
@@ -52,8 +56,9 @@ class Backend(QObject):
     projectNameChanged = pyqtSignal()
     viewerUrlChanged = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, controller=None, parent=None):
         super().__init__(parent)
+        self._controller = controller   # AppController (may be None for legacy)
 
         # Internal state
         self._video_path: Optional[str] = None
@@ -89,7 +94,7 @@ class Backend(QObject):
         # Viewer HTML path
         self._viewer_html = Path(__file__).parent / "viewer" / "viewer.html"
 
-        # Load persisted settings
+        # Load persisted default settings (not project — that's loaded separately)
         self._load_settings()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -357,23 +362,12 @@ class Backend(QObject):
         self._update_button_states()
 
     @pyqtSlot()
-    def clear(self):
-        self._video_path = None
-        self._video_info = ""
-        self._set_status("Ready")
-        self._log_lines.clear()
-        self.logContentChanged.emit()
-        self.videoNameChanged.emit()
-        self.videoUrlChanged.emit()
-        self.videoInfoChanged.emit()
-        self.hasVideoChanged.emit()
-
-        for key, _ in STAGE_DEFS:
-            self._set_stage(key, "pending", "")
-            self._stage_paths[key] = None
-
-        self._log("Cleared all data")
-        self._update_button_states()
+    def windowClosing(self):
+        """Called by QML onClosing — auto-save and tell controller."""
+        self._auto_save_project()
+        self._save_settings()
+        if self._controller:
+            self._controller.close_window(self)
 
     @pyqtSlot()
     def clearLog(self):
@@ -389,62 +383,60 @@ class Backend(QObject):
 
     @pyqtSlot()
     def newProject(self):
-        """Create a new project — pick a folder."""
-        dir_path = QFileDialog.getExistingDirectory(
-            None, "Choose Project Folder", str(Path.home())
+        """Create a new project.  Uses save-file dialog so user can pick
+        parent folder *and* type a project name.  If the current window
+        already has a project, a new window is spawned instead."""
+        start = str(Path.home())
+        file_path, _ = QFileDialog.getSaveFileName(
+            None, "Create New Project", start, "Splats Project Folder (*)"
         )
-        if dir_path:
-            self._project.new_project(
-                project_dir=dir_path,
-                video_path=self._video_path,
-                settings=self._current_settings(),
-            )
-            self._project.save_project()
-            self._log(f"New project: {dir_path}")
-            self.windowTitleChanged.emit()
-            self.projectNameChanged.emit()
-            self.projectDirChanged.emit()
+        if not file_path:
+            return
+
+        proj_dir = Path(file_path)
+        # getSaveFileName returns a file-like path; we treat it as a dir
+        proj_dir.mkdir(parents=True, exist_ok=True)
+
+        if self._project.is_open and self._controller:
+            # Current window has a project → spawn new window
+            self._controller.create_window(new_project_dir=str(proj_dir))
+        else:
+            # Current window is empty → use it
+            self._init_new_project(str(proj_dir))
 
     @pyqtSlot()
     def openProject(self):
-        """Open existing project folder."""
+        """Open an existing project folder.  Spawns a new window if this
+        window already has a project loaded."""
         dir_path = QFileDialog.getExistingDirectory(
             None, "Open Project Folder", str(Path.home())
         )
-        if dir_path:
+        if not dir_path:
+            return
+
+        if self._project.is_open and self._controller:
+            # Current window has a project → spawn new window
+            self._controller.create_window(project_dir=dir_path)
+        else:
+            # Current window is empty → use it
             self._load_project_file(dir_path)
+            self._save_settings()
 
     @pyqtSlot()
     def saveProject(self):
         if not self._project.is_open:
             self._project.new_project(video_path=self._video_path, settings=self._current_settings())
         if not self._project.project_dir:
-            # No dir yet — prompt
+            # No dir yet — prompt via New
             self.newProject()
         else:
             self._project.update_settings(self._current_settings())
             if self._video_path:
                 self._project.update_input(self._video_path)
             self._project.save_project()
+            self._save_settings()
             self._log(f"Project saved: {self._project.project_name}")
             self.windowTitleChanged.emit()
-
-    @pyqtSlot()
-    def saveProjectAs(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            None, "Save Project As (choose folder)", str(Path.home())
-        )
-        if dir_path:
-            if not self._project.is_open:
-                self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-            self._project.update_settings(self._current_settings())
-            if self._video_path:
-                self._project.update_input(self._video_path)
-            self._project.save_project(dir_path)
-            self._log(f"Project saved to: {dir_path}")
-            self.windowTitleChanged.emit()
-            self.projectNameChanged.emit()
-            self.projectDirChanged.emit()
 
     # ══════════════════════════════════════════════════════════════════════════
     #  Internal helpers
@@ -503,6 +495,7 @@ class Backend(QObject):
     # ── Settings persistence ──
 
     def _load_settings(self):
+        """Load global default settings (not project state — that's separate)."""
         if not self._settings_file.exists():
             return
         try:
@@ -514,28 +507,13 @@ class Backend(QObject):
                 self._training_iterations = s['training_iterations']
             if 'max_frames' in s:
                 self._max_frames = s['max_frames']
-            last_video = s.get('last_video_path')
-            if last_video and Path(last_video).exists():
-                self._video_path = last_video
-                try:
-                    processor = VideoProcessor()
-                    info = processor.get_video_info(last_video)
-                    self._video_info = (
-                        f"Resolution: {info['width']}x{info['height']} | "
-                        f"FPS: {info['fps']:.2f} | "
-                        f"Frames: {info['frame_count']} | "
-                        f"Duration: {info['duration']:.2f}s"
-                    )
-                except Exception:
-                    pass
-            self._log("Settings loaded")
         except Exception as e:
             self._log(f"Could not load settings: {e}")
 
     def _save_settings(self):
+        """Persist global default settings."""
         try:
             settings = {
-                'last_video_path': self._video_path,
                 'reconstruction_method': self._reconstruction_method,
                 'training_iterations': self._training_iterations,
                 'sample_rate': 5,
@@ -547,6 +525,27 @@ class Backend(QObject):
             print(f"[WARN] Could not save settings: {e}")
 
     # ── Project helpers ──
+
+    def _init_new_project(self, proj_dir: str):
+        """Set up this Backend for a brand-new project at *proj_dir*."""
+        self._project.new_project(
+            project_dir=proj_dir,
+            video_path=self._video_path,
+            settings=self._current_settings(),
+        )
+        self._project.save_project()
+        self._save_settings()
+
+        # Reset stage UI
+        for key, _ in STAGE_DEFS:
+            self._set_stage(key, "pending", "")
+            self._stage_paths[key] = None
+
+        self._log(f"New project: {proj_dir}")
+        self.windowTitleChanged.emit()
+        self.projectNameChanged.emit()
+        self.projectDirChanged.emit()
+        self._update_button_states()
 
     def _ensure_project_dir(self):
         """Auto-create a project dir from video name if not set."""
@@ -636,6 +635,7 @@ class Backend(QObject):
             if self._video_path:
                 self._project.update_input(self._video_path)
             self._project.save_project()
+            self._save_settings()  # persist last_project_dir
 
     def _load_ply_in_viewer(self, ply_path: str):
         try:
