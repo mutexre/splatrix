@@ -95,6 +95,7 @@ Item {
                         SpinBox {
                             id: maxFramesSpin
                             from: 0; to: 10000; stepSize: 10
+                            editable: true
                             value: backend ? backend.maxFrames : 300
                             enabled: backend ? !backend.isProcessing : true
                             Layout.fillWidth: true
@@ -145,6 +146,7 @@ Item {
                         SpinBox {
                             id: iterSpin
                             from: 1000; to: 100000; stepSize: 5000
+                            editable: true
                             value: backend ? backend.trainingIterations : 30000
                             enabled: backend ? !backend.isProcessing : true
                             Layout.fillWidth: true
@@ -257,46 +259,30 @@ Item {
                         }
                     }
 
-                    // Output PLY path (spans 2 columns)
-                    ColumnLayout {
+                    // Project folder info (spans 2 columns)
+                    RowLayout {
                         Layout.columnSpan: 2
-                        spacing: 4
+                        spacing: Theme.spacing
 
                         Text {
-                            text: "Output PLY"
+                            text: "Project"
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontSizeXs
+                            font.weight: Font.Medium
+                            Layout.alignment: Qt.AlignVCenter
                         }
-                        RowLayout {
+                        Text {
+                            text: backend && backend.projectDir ? backend.projectDir : "Auto-created on start"
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSizeXs
+                            elide: Text.ElideMiddle
                             Layout.fillWidth: true
-                            spacing: Theme.spacing
-
-                            TextField {
-                                id: outputField
-                                text: backend ? backend.outputPath : ""
-                                enabled: backend ? !backend.isProcessing : true
-                                Layout.fillWidth: true
-                                onTextChanged: if (backend) backend.outputPath = text
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSizeSm
-                                placeholderText: "Output PLY path..."
-                                placeholderTextColor: Theme.textMuted
-
-                                background: Rectangle {
-                                    implicitHeight: 32
-                                    color: Theme.bg
-                                    border.color: outputField.activeFocus ? Theme.accent : Theme.borderSubtle
-                                    border.width: 1
-                                    radius: Theme.radiusMd
-                                }
-                            }
-
-                            IconButton {
-                                text: "Browse"
-                                iconName: "folder"
-                                enabled: backend ? !backend.isProcessing : true
-                                onClicked: if (backend) backend.browseOutput()
-                            }
+                        }
+                        IconButton {
+                            text: "Open"
+                            iconName: "folder-open"
+                            visible: backend ? !!backend.projectDir : false
+                            onClicked: if (backend) backend.openProjectFolder()
                         }
                     }
                 }
@@ -383,7 +369,7 @@ Item {
             }
 
             IconButton {
-                text: "Re-export"
+                text: "Export PLY"
                 iconName: "rotate-ccw"
                 enabled: backend ? (backend.canResumeTraining && !backend.isProcessing) : false
                 onClicked: backend.resumeFromTraining()

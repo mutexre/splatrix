@@ -21,7 +21,7 @@ Button {
 
         Icon {
             name: root.iconName
-            size: 14
+            size: 16
             color: _textColor()
             visible: root.iconName !== ""
             anchors.verticalCenter: parent.verticalCenter

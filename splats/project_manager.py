@@ -1,4 +1,11 @@
-"""Project persistence manager - saves/restores pipeline state across app restarts"""
+
+"""Project persistence manager - saves/restores pipeline state across app restarts.
+
+A project is a DIRECTORY containing:
+  project.yaml   — metadata, settings, stage statuses
+  nerfstudio/     — workspace for nerfstudio pipeline
+  output.ply      — exported Gaussian Splat
+"""
 
 import json
 from datetime import datetime
@@ -15,12 +22,17 @@ SETTINGS_DIR = Path.home() / ".splats_workspace"
 RECENT_PROJECTS_FILE = SETTINGS_DIR / "recent_projects.json"
 MAX_RECENT = 10
 
+PROJECT_FILENAME = "project.yaml"
+
 
 class ProjectManager:
-    """Manages .splatproj project files (YAML format) for pipeline state persistence"""
+    """Manages project directories for pipeline state persistence.
+
+    Each project is a folder containing project.yaml plus all generated data.
+    """
 
     def __init__(self):
-        self.project_path: Optional[Path] = None
+        self.project_dir: Optional[Path] = None   # The project folder
         self._data: dict = {}
         SETTINGS_DIR.mkdir(exist_ok=True)
 
@@ -32,9 +44,30 @@ class ProjectManager:
 
     @property
     def project_name(self) -> str:
-        if self.project_path:
-            return self.project_path.stem
+        if self.project_dir:
+            return self.project_dir.name
         return "Unsaved Project"
+
+    @property
+    def project_path(self) -> Optional[Path]:
+        """Path to project.yaml inside the project dir (for compat)."""
+        if self.project_dir:
+            return self.project_dir / PROJECT_FILENAME
+        return None
+
+    @property
+    def workspace_dir(self) -> Optional[Path]:
+        """Nerfstudio workspace inside the project dir."""
+        if self.project_dir:
+            return self.project_dir / "nerfstudio"
+        return None
+
+    @property
+    def output_ply_path(self) -> Optional[Path]:
+        """Default PLY output inside the project dir."""
+        if self.project_dir:
+            return self.project_dir / "output.ply"
+        return None
 
     @property
     def video_path(self) -> Optional[str]:
@@ -52,14 +85,15 @@ class ProjectManager:
 
     def new_project(
         self,
+        project_dir: Optional[str] = None,
         video_path: Optional[str] = None,
         settings: Optional[dict] = None
     ) -> dict:
-        """Initialize a new in-memory project"""
+        """Initialize a new project. If project_dir given, create the folder."""
         now = datetime.now().isoformat(timespec='seconds')
         self._data = {
             'project': {
-                'version': '1.0',
+                'version': '2.0',
                 'created': now,
                 'modified': now,
             },
@@ -71,46 +105,76 @@ class ProjectManager:
                 stage: {'status': 'pending'} for stage in STAGE_ORDER
             },
         }
-        self.project_path = None
+        if project_dir:
+            self.project_dir = Path(project_dir)
+            self.project_dir.mkdir(parents=True, exist_ok=True)
+            self._add_to_recent(self.project_dir)
+        else:
+            self.project_dir = None
         return self._data
 
     def load_project(self, path: str) -> dict:
-        """Load project from .splatproj YAML file. Returns project data dict."""
+        """Load project from a directory or a project.yaml file.
+        Accepts either the project directory or the yaml file path.
+        """
         p = Path(path)
-        if not p.exists():
-            raise FileNotFoundError(f"Project file not found: {p}")
+        if p.is_dir():
+            proj_dir = p
+            proj_file = p / PROJECT_FILENAME
+        elif p.name == PROJECT_FILENAME or p.suffix in ('.yaml', '.yml', '.splatproj'):
+            proj_dir = p.parent
+            proj_file = p
+            # Legacy .splatproj files: treat parent as project dir
+            if p.suffix == '.splatproj':
+                proj_dir = p.parent
+                proj_file = p
+        else:
+            raise FileNotFoundError(f"Not a valid project: {p}")
 
-        with open(p, 'r') as f:
+        if not proj_file.exists():
+            # Check for legacy .splatproj
+            legacy = list(proj_dir.glob("*.splatproj"))
+            if legacy:
+                proj_file = legacy[0]
+            else:
+                raise FileNotFoundError(f"Project file not found: {proj_file}")
+
+        with open(proj_file, 'r') as f:
             data = yaml.safe_load(f)
 
         self._data = data or {}
-        self.project_path = p
-        self._add_to_recent(p)
+        self.project_dir = proj_dir
+        self._add_to_recent(proj_dir)
         return self._data
 
     def save_project(self, path: Optional[str] = None) -> bool:
-        """Save project to disk. Uses existing path if no path provided.
+        """Save project to disk. If path given, sets project dir.
         Returns True on success."""
         if not self._data:
             return False
 
-        save_path = Path(path) if path else self.project_path
-        if not save_path:
-            return False  # No path set - caller must use save_as
+        if path:
+            p = Path(path)
+            if p.suffix in ('.yaml', '.yml', '.splatproj'):
+                self.project_dir = p.parent
+            else:
+                self.project_dir = p
+                self.project_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self.project_dir:
+            return False
+
+        self.project_dir.mkdir(parents=True, exist_ok=True)
 
         # Update modification timestamp
         if 'project' in self._data:
             self._data['project']['modified'] = datetime.now().isoformat(timespec='seconds')
 
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(save_path, 'w') as f:
+        save_file = self.project_dir / PROJECT_FILENAME
+        with open(save_file, 'w') as f:
             yaml.dump(self._data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-        if path:
-            self.project_path = save_path
-            self._add_to_recent(save_path)
-
+        self._add_to_recent(self.project_dir)
         return True
 
     # ── Data Updates ──────────────────────────────────────────────────────────
@@ -128,13 +192,7 @@ class ProjectManager:
         self._data['settings'] = settings
 
     def update_stage(self, stage_key: str, status: str, **extra):
-        """Update a pipeline stage's status and optional metadata.
-
-        Args:
-            stage_key: One of STAGE_ORDER values
-            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-            **extra: Additional fields to store (path, count, checkpoint_dir, etc.)
-        """
+        """Update a pipeline stage's status and optional metadata."""
         self._ensure_open()
         stages = self._data.setdefault('stages', {})
         stage = stages.setdefault(stage_key, {})
@@ -158,7 +216,7 @@ class ProjectManager:
         for stage in STAGE_ORDER:
             if not self.is_stage_completed(stage):
                 return stage
-        return None  # All complete
+        return None
 
     def can_resume_from_training(self) -> bool:
         """True if training is complete and checkpoint exists"""
@@ -188,13 +246,12 @@ class ProjectManager:
     # ── Recent Projects ───────────────────────────────────────────────────────
 
     def get_recent_projects(self) -> list[str]:
-        """Returns list of recent project paths (most recent first)"""
+        """Returns list of recent project directory paths (most recent first)"""
         if not RECENT_PROJECTS_FILE.exists():
             return []
         try:
             with open(RECENT_PROJECTS_FILE) as f:
                 paths = json.load(f)
-            # Filter to existing files only
             return [p for p in paths if Path(p).exists()]
         except Exception:
             return []
@@ -203,7 +260,6 @@ class ProjectManager:
         """Add a project to the recent projects list"""
         recent = self.get_recent_projects()
         path_str = str(path)
-        # Remove if already present
         recent = [p for p in recent if p != path_str]
         recent.insert(0, path_str)
         recent = recent[:MAX_RECENT]

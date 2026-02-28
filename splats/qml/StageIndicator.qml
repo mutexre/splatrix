@@ -40,14 +40,14 @@ Rectangle {
 
             // Status icon (using Lucide SVG icons)
             Item {
-                width: 18; height: 18
+                width: 20; height: 20
                 Layout.alignment: Qt.AlignVCenter
 
                 // Pending — circle icon (muted)
                 Icon {
                     anchors.centerIn: parent
                     name: "circle"
-                    size: 16
+                    size: 18
                     color: Theme.textMuted
                     visible: root.status === "pending"
                 }
@@ -57,7 +57,7 @@ Rectangle {
                     id: loaderIcon
                     anchors.centerIn: parent
                     name: "loader"
-                    size: 18
+                    size: 20
                     color: Theme.running
                     visible: root.status === "running"
 
@@ -73,7 +73,7 @@ Rectangle {
                 Icon {
                     anchors.centerIn: parent
                     name: "check"
-                    size: 18
+                    size: 20
                     color: Theme.success
                     visible: root.status === "completed"
                 }
@@ -82,7 +82,7 @@ Rectangle {
                 Icon {
                     anchors.centerIn: parent
                     name: "x"
-                    size: 18
+                    size: 20
                     color: Theme.error
                     visible: root.status === "failed"
                 }
@@ -91,7 +91,7 @@ Rectangle {
                 Icon {
                     anchors.centerIn: parent
                     name: "ban"
-                    size: 16
+                    size: 18
                     color: Theme.warning
                     visible: root.status === "cancelled"
                 }
@@ -116,7 +116,7 @@ Rectangle {
 
             // Open folder button (completed stages only)
             Rectangle {
-                width: 22; height: 22
+                width: 24; height: 24
                 radius: Theme.radiusSm
                 color: folderMa.containsMouse ? Theme.surfaceHover : "transparent"
                 visible: root.status === "completed" && root.stageKey !== ""
@@ -125,7 +125,7 @@ Rectangle {
                 Icon {
                     anchors.centerIn: parent
                     name: "folder-open"
-                    size: 14
+                    size: 16
                     color: Theme.textMuted
                 }
 

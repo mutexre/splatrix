@@ -28,10 +28,10 @@ QtObject {
 
     // ── Typography ──
     readonly property string fontFamily: "Inter"
-    readonly property int fontSizeXs:   11
-    readonly property int fontSizeSm:   13
-    readonly property int fontSizeMd:   14
-    readonly property int fontSizeLg:   16
+    readonly property int fontSizeXs:   12
+    readonly property int fontSizeSm:   14
+    readonly property int fontSizeMd:   15
+    readonly property int fontSizeLg:   18
 
     // ── Geometry ──
     readonly property int radiusSm: 6

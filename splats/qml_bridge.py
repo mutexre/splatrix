@@ -42,7 +42,7 @@ class Backend(QObject):
     maxFramesChanged = pyqtSignal()
     trainingIterationsChanged = pyqtSignal()
     reconstructionMethodChanged = pyqtSignal()
-    outputPathChanged = pyqtSignal()
+    projectDirChanged = pyqtSignal()
     isProcessingChanged = pyqtSignal()
     canResumeTrainingChanged = pyqtSignal()
     statusTextChanged = pyqtSignal()
@@ -61,7 +61,6 @@ class Backend(QObject):
         self._max_frames = 300
         self._training_iterations = 30000
         self._reconstruction_method = 1  # Nerfstudio
-        self._output_path = str(Path.home() / ".splats_workspace" / "output.ply")
         self._status_text = "Ready"
         self._log_lines: list[str] = []
         self._viewer_url = ""
@@ -148,15 +147,9 @@ class Backend(QObject):
             self.reconstructionMethodChanged.emit()
             self._save_settings()
 
-    @pyqtProperty(str, notify=outputPathChanged)
-    def outputPath(self):
-        return self._output_path
-
-    @outputPath.setter
-    def outputPath(self, v):
-        if self._output_path != v:
-            self._output_path = v
-            self.outputPathChanged.emit()
+    @pyqtProperty(str, notify=projectDirChanged)
+    def projectDir(self):
+        return str(self._project.project_dir) if self._project.project_dir else ""
 
     @pyqtProperty(bool, notify=isProcessingChanged)
     def isProcessing(self):
@@ -250,14 +243,6 @@ class Backend(QObject):
             self._save_settings()
             self._update_button_states()
 
-    @pyqtSlot()
-    def browseOutput(self):
-        file_path, _ = QFileDialog.getSaveFileName(
-            None, "Save PLY File", self._output_path, "PLY Files (*.ply);;All Files (*)"
-        )
-        if file_path:
-            self.outputPath = file_path
-
     @pyqtSlot(str)
     def openStageFolder(self, stage_key):
         """Open file browser for a stage's output directory."""
@@ -273,8 +258,16 @@ class Backend(QObject):
             self._log("Error: No video selected")
             return
 
+        # Ensure project folder exists
+        if not self._project.project_dir:
+            self._ensure_project_dir()
+            if not self._project.project_dir:
+                self._log("Error: No project directory set")
+                return
+
         self._log("=" * 50)
         self._log("Starting conversion pipeline...")
+        self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
 
         if self._reconstruction_method == 1:
@@ -296,13 +289,14 @@ class Backend(QObject):
             self._set_stage(key, 'completed', 'Skipped')
         self._set_stage('export', 'pending', 'Waiting...')
 
-        workspace = self._workspace / "nerfstudio"
+        workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
+        output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
         max_frames = self._max_frames if self._max_frames > 0 else 300
 
         self._nerfstudio_worker = NerfstudioWorker(
             video_path=self._video_path or "",
-            workspace_dir=str(workspace),
-            output_ply_path=self._output_path,
+            workspace_dir=workspace,
+            output_ply_path=output_ply,
             max_iterations=self._training_iterations,
             use_video_directly=True,
             num_frames_target=max_frames,
@@ -314,6 +308,14 @@ class Backend(QObject):
         self._connect_nerfstudio_worker()
         self._nerfstudio_worker.start()
         self._update_button_states()
+
+    @pyqtSlot()
+    def openProjectFolder(self):
+        """Open the project directory in the system file manager."""
+        if self._project.project_dir and self._project.project_dir.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._project.project_dir)))
+        else:
+            self._log("No project directory")
 
     @pyqtSlot()
     def cancel(self):
@@ -387,35 +389,62 @@ class Backend(QObject):
 
     @pyqtSlot()
     def newProject(self):
-        self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-        self._on_save_project_as()
+        """Create a new project — pick a folder."""
+        dir_path = QFileDialog.getExistingDirectory(
+            None, "Choose Project Folder", str(Path.home())
+        )
+        if dir_path:
+            self._project.new_project(
+                project_dir=dir_path,
+                video_path=self._video_path,
+                settings=self._current_settings(),
+            )
+            self._project.save_project()
+            self._log(f"New project: {dir_path}")
+            self.windowTitleChanged.emit()
+            self.projectNameChanged.emit()
+            self.projectDirChanged.emit()
 
     @pyqtSlot()
     def openProject(self):
-        path, _ = QFileDialog.getOpenFileName(
-            None, "Open Project", str(Path.home()),
-            "Splat Projects (*.splatproj);;All Files (*)"
+        """Open existing project folder."""
+        dir_path = QFileDialog.getExistingDirectory(
+            None, "Open Project Folder", str(Path.home())
         )
-        if path:
-            self._load_project_file(path)
+        if dir_path:
+            self._load_project_file(dir_path)
 
     @pyqtSlot()
     def saveProject(self):
         if not self._project.is_open:
             self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-        if not self._project.project_path:
-            self._on_save_project_as()
+        if not self._project.project_dir:
+            # No dir yet — prompt
+            self.newProject()
         else:
             self._project.update_settings(self._current_settings())
             if self._video_path:
                 self._project.update_input(self._video_path)
             self._project.save_project()
-            self._log(f"Project saved: {self._project.project_path.name}")
+            self._log(f"Project saved: {self._project.project_name}")
             self.windowTitleChanged.emit()
 
     @pyqtSlot()
     def saveProjectAs(self):
-        self._on_save_project_as()
+        dir_path = QFileDialog.getExistingDirectory(
+            None, "Save Project As (choose folder)", str(Path.home())
+        )
+        if dir_path:
+            if not self._project.is_open:
+                self._project.new_project(video_path=self._video_path, settings=self._current_settings())
+            self._project.update_settings(self._current_settings())
+            if self._video_path:
+                self._project.update_input(self._video_path)
+            self._project.save_project(dir_path)
+            self._log(f"Project saved to: {dir_path}")
+            self.windowTitleChanged.emit()
+            self.projectNameChanged.emit()
+            self.projectDirChanged.emit()
 
     # ══════════════════════════════════════════════════════════════════════════
     #  Internal helpers
@@ -455,6 +484,13 @@ class Backend(QObject):
     def _update_button_states(self):
         self.isProcessingChanged.emit()
         self.canResumeTrainingChanged.emit()
+
+    def _set_data_stage_paths(self, ws_data: Path):
+        """Set all data-stage folder paths from the nerfstudio data directory."""
+        self._stage_paths['frames'] = str(ws_data / "images")
+        self._stage_paths['feature_extract'] = str(ws_data / "colmap")
+        self._stage_paths['feature_match'] = str(ws_data / "colmap")
+        self._stage_paths['reconstruction'] = str(ws_data)
 
     def _current_settings(self) -> dict:
         return {
@@ -512,35 +548,34 @@ class Backend(QObject):
 
     # ── Project helpers ──
 
-    def _on_save_project_as(self):
-        suggested = str(Path.home() / "splats_project.splatproj")
-        if self._video_path:
-            stem = Path(self._video_path).stem
-            suggested = str(Path.home() / f"{stem}.splatproj")
-
-        path, _ = QFileDialog.getSaveFileName(
-            None, "Save Project As", suggested,
-            "Splat Projects (*.splatproj);;All Files (*)"
-        )
-        if path:
-            if not path.endswith('.splatproj'):
-                path += '.splatproj'
-            if not self._project.is_open:
-                self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-            self._project.update_settings(self._current_settings())
-            if self._video_path:
-                self._project.update_input(self._video_path)
-            self._project.save_project(path)
-            self._log(f"Project saved: {path}")
-            self.windowTitleChanged.emit()
-            self.projectNameChanged.emit()
+    def _ensure_project_dir(self):
+        """Auto-create a project dir from video name if not set."""
+        if self._project.project_dir:
+            return
+        stem = Path(self._video_path).stem if self._video_path else "splats_project"
+        proj_dir = self._workspace / stem
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        if not self._project.is_open:
+            self._project.new_project(
+                project_dir=str(proj_dir),
+                video_path=self._video_path,
+                settings=self._current_settings(),
+            )
+        else:
+            self._project.project_dir = proj_dir
+        self._project.save_project()
+        self._log(f"Auto-created project: {proj_dir}")
+        self.windowTitleChanged.emit()
+        self.projectNameChanged.emit()
+        self.projectDirChanged.emit()
 
     def _load_project_file(self, path: str):
         try:
             self._project.load_project(path)
-            self._log(f"Project loaded: {Path(path).name}")
+            self._log(f"Project loaded: {self._project.project_name}")
             self.windowTitleChanged.emit()
             self.projectNameChanged.emit()
+            self.projectDirChanged.emit()
 
             # Restore video
             vid = self._project.video_path
@@ -625,7 +660,11 @@ class Backend(QObject):
         self._log("This will take 10-30 minutes depending on GPU and settings")
 
         if not self._project.is_open:
-            self._project.new_project(video_path=self._video_path, settings=self._current_settings())
+            self._project.new_project(
+                project_dir=str(self._project.project_dir) if self._project.project_dir else None,
+                video_path=self._video_path,
+                settings=self._current_settings(),
+            )
         else:
             self._project.update_settings(self._current_settings())
             if self._video_path:
@@ -637,12 +676,13 @@ class Backend(QObject):
             self._set_stage(key, 'pending', 'Waiting...')
 
         max_frames = self._max_frames if self._max_frames > 0 else 300
-        workspace = self._workspace / "nerfstudio"
+        workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
+        output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
 
         self._nerfstudio_worker = NerfstudioWorker(
             video_path=self._video_path,
-            workspace_dir=str(workspace),
-            output_ply_path=self._output_path,
+            workspace_dir=workspace,
+            output_ply_path=output_ply,
             max_iterations=self._training_iterations,
             use_video_directly=True,
             num_frames_target=max_frames
@@ -685,7 +725,8 @@ class Backend(QObject):
 
         # Map to stages (same logic as main_window.py)
         if "Data" in stage:
-            ws_data = str(self._workspace / "nerfstudio" / "nerfstudio_data")
+            ws_base = self._project.workspace_dir or (self._workspace / "nerfstudio")
+            ws_data = ws_base / "nerfstudio_data"
 
             if any(x in substage.lower() for x in ["extracting frames", "converting video"]) or (progress < 0.15 and "colmap" not in substage.lower()):
                 target = self._max_frames or 300
@@ -693,9 +734,11 @@ class Backend(QObject):
 
             elif "frame extraction complete" in substage.lower() or ("done converting" in substage.lower() and "feature" not in substage.lower()):
                 self._set_stage('frames', 'completed', 'Complete')
+                self._stage_paths['frames'] = str(ws_data / "images")
 
             elif "extracting features" in substage.lower():
                 self._set_stage('frames', 'completed', 'Complete')
+                self._stage_paths['frames'] = str(ws_data / "images")
                 count_match = re.search(r'\[(\d+)/(\d+)\]', substage)
                 if count_match:
                     detail = f"{count_match.group(1)}/{count_match.group(2)}"
@@ -708,6 +751,8 @@ class Backend(QObject):
             elif "matching features" in substage.lower():
                 self._set_stage('frames', 'completed', 'Complete')
                 self._set_stage('feature_extract', 'completed', 'Complete')
+                self._stage_paths['frames'] = str(ws_data / "images")
+                self._stage_paths['feature_extract'] = str(ws_data / "colmap")
                 count_match = re.search(r'\[(\d+)/(\d+)\]', substage)
                 if count_match:
                     detail = f"{count_match.group(1)}/{count_match.group(2)}"
@@ -721,6 +766,9 @@ class Backend(QObject):
                 self._set_stage('frames', 'completed', 'Complete')
                 self._set_stage('feature_extract', 'completed', 'Complete')
                 self._set_stage('feature_match', 'completed', 'Complete')
+                self._stage_paths['frames'] = str(ws_data / "images")
+                self._stage_paths['feature_extract'] = str(ws_data / "colmap")
+                self._stage_paths['feature_match'] = str(ws_data / "colmap")
                 if "bundle" in substage.lower():
                     detail = "Optimizing"
                 elif "refining" in substage.lower():
@@ -739,10 +787,12 @@ class Backend(QObject):
             elif "colmap" in substage.lower() and "complete" in substage.lower():
                 for k in ['frames', 'feature_extract', 'feature_match', 'reconstruction']:
                     self._set_stage(k, 'completed', 'Complete')
+                self._set_data_stage_paths(ws_data)
 
             elif progress >= 1.0 or "all done" in substage.lower() or "congrats" in substage.lower():
                 for k in ['frames', 'feature_extract', 'feature_match', 'reconstruction']:
                     self._set_stage(k, 'completed', 'Complete')
+                self._set_data_stage_paths(ws_data)
 
         elif "Training" in stage:
             step_match = re.search(r'Step (\d+)/(\d+)', substage)
@@ -784,15 +834,10 @@ class Backend(QObject):
                 self._project.new_project(video_path=self._video_path, settings=self._current_settings())
             self._project.update_stage('export', 'completed', ply_path=output_path)
             self._stage_paths['export'] = str(Path(output_path).parent)
-            if not self._project.project_path:
-                stem = Path(self._video_path).stem if self._video_path else "splats"
-                auto_path = self._workspace / f"{stem}.splatproj"
-                self._project.save_project(str(auto_path))
-                self._log(f"Project auto-saved: {auto_path.name}")
-                self.windowTitleChanged.emit()
-                self.projectNameChanged.emit()
-            else:
-                self._auto_save_project()
+            self._auto_save_project()
+            self.windowTitleChanged.emit()
+            self.projectNameChanged.emit()
+            self.projectDirChanged.emit()
 
             self._load_ply_in_viewer(output_path)
         else:
@@ -842,7 +887,8 @@ class Backend(QObject):
 
     def _start_video_processing(self):
         self._log("Stage 1/3: Extracting frames from video...")
-        frames_dir = self._workspace / "frames"
+        base_dir = self._project.project_dir or self._workspace
+        frames_dir = base_dir / "frames"
         frames_dir.mkdir(exist_ok=True)
         for f in frames_dir.glob("*.png"):
             f.unlink()
@@ -870,9 +916,10 @@ class Backend(QObject):
 
     def _start_reconstruction(self, frame_paths: list):
         self._log("Stage 2/3: Performing 3D reconstruction...")
+        base_dir = self._project.project_dir or self._workspace
         method = "mock" if self._reconstruction_method == 0 else "colmap"
         self._reconstruction_worker = ReconstructionWorker(
-            frame_paths, str(self._workspace / "reconstruction"), method=method
+            frame_paths, str(base_dir / "reconstruction"), method=method
         )
         self._reconstruction_worker.progress.connect(lambda d: self._set_status(f"Running {d['stage']}..."))
         self._reconstruction_worker.finished.connect(self._on_reconstruction_finished)
@@ -891,7 +938,8 @@ class Backend(QObject):
 
     def _start_ply_export(self, splat_data: dict):
         self._log("Stage 3/3: Exporting to PLY format...")
-        self._export_worker = PLYExportWorker(splat_data, self._output_path)
+        output_ply = str(self._project.output_ply_path) if self._project.output_ply_path else str(self._workspace / "output.ply")
+        self._export_worker = PLYExportWorker(splat_data, output_ply)
         self._export_worker.progress.connect(lambda d: self._set_status("Exporting PLY..."))
         self._export_worker.finished.connect(self._on_export_finished)
         self._export_worker.error.connect(lambda msg: (self._log(f"Error: {msg}"), self._set_status("Error")))

@@ -32,7 +32,7 @@ Rectangle {
 
             Icon {
                 name: root.iconName
-                size: 14
+                size: 16
                 color: Theme.textMuted
                 visible: root.iconName !== ""
             }
