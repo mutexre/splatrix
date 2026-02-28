@@ -5,13 +5,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QObject, QUrl
+from PyQt6.QtCore import QObject, QUrl, QStandardPaths
 from PyQt6.QtQml import QQmlApplicationEngine
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 
-# Where we persist the list of open windows across sessions
+# Where we persist session state
 SETTINGS_DIR = Path.home() / ".splats_workspace"
 SESSION_FILE = SETTINGS_DIR / "session.json"
+PROJECTS_FOLDER_NAME = "Splats Projects"
 
 
 class AppController(QObject):
@@ -22,7 +24,79 @@ class AppController(QObject):
         super().__init__(parent)
         self._windows: list[tuple[QQmlApplicationEngine, "Backend"]] = []
         self._qml_dir = Path(__file__).parent / "qml"
+        self._projects_root: Optional[Path] = None
         SETTINGS_DIR.mkdir(exist_ok=True)
+
+    # ── Projects root directory ───────────────────────────────────────────
+
+    @property
+    def projects_root(self) -> Optional[Path]:
+        return self._projects_root
+
+    def ensure_projects_root(self) -> bool:
+        """Ensure the default 'Splats Projects' folder exists in ~/Documents.
+
+        Returns True if a valid projects root is available.  If a non-folder
+        entity blocks the default path, prompts the user to pick an
+        alternative location.
+        """
+        # Check for a previously saved custom location
+        saved = self._load_projects_root()
+        if saved and saved.is_dir():
+            self._projects_root = saved
+            return True
+
+        docs = Path(QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DocumentsLocation
+        ))
+        default_path = docs / PROJECTS_FOLDER_NAME
+
+        if default_path.is_dir():
+            # Already exists as a folder — use it
+            self._projects_root = default_path
+            self._save_projects_root()
+            return True
+
+        if not default_path.exists():
+            # Nothing there — create it
+            try:
+                default_path.mkdir(parents=True, exist_ok=True)
+                self._projects_root = default_path
+                self._save_projects_root()
+                return True
+            except OSError as e:
+                print(f"[WARN] Cannot create {default_path}: {e}", file=sys.stderr)
+
+        # Something non-folder exists at that path, or creation failed
+        QMessageBox.information(
+            None,
+            "Projects Folder",
+            f"Cannot use default location:\n{default_path}\n\n"
+            "Please choose where to store Splats projects.",
+        )
+        chosen = QFileDialog.getExistingDirectory(
+            None, "Choose Projects Root Folder", str(docs)
+        )
+        if chosen:
+            self._projects_root = Path(chosen)
+            self._save_projects_root()
+            return True
+
+        return False
+
+    def _load_projects_root(self) -> Optional[Path]:
+        try:
+            with open(SESSION_FILE) as f:
+                data = json.load(f)
+            root = data.get("projects_root")
+            return Path(root) if root else None
+        except Exception:
+            return None
+
+    def _save_projects_root(self):
+        data = self._load_session_data()
+        data["projects_root"] = str(self._projects_root) if self._projects_root else None
+        self._write_session(data)
 
     # ── Window lifecycle ──────────────────────────────────────────────────
 
@@ -85,29 +159,38 @@ class AppController(QObject):
 
     # ── Session persistence ───────────────────────────────────────────────
 
+    def _load_session_data(self) -> dict:
+        if not SESSION_FILE.exists():
+            return {}
+        try:
+            with open(SESSION_FILE) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _write_session(self, data: dict):
+        try:
+            with open(SESSION_FILE, "w") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
+
     def _save_session(self):
         """Persist list of open project dirs so they reopen next launch."""
+        data = self._load_session_data()
         dirs = []
         for _, backend in self._windows:
             d = backend._project.project_dir
             if d and d.exists():
                 dirs.append(str(d))
-        try:
-            with open(SESSION_FILE, "w") as f:
-                json.dump(dirs, f, indent=2)
-        except Exception:
-            pass
+        data["open_projects"] = dirs
+        self._write_session(data)
 
-    def restore_session(self):
+    def restore_session(self) -> bool:
         """Reopen windows from last session.  Returns True if at least one
         window was created."""
-        if not SESSION_FILE.exists():
-            return False
-        try:
-            with open(SESSION_FILE) as f:
-                dirs = json.load(f)
-        except Exception:
-            return False
+        data = self._load_session_data()
+        dirs = data.get("open_projects", [])
 
         opened = False
         for d in dirs:

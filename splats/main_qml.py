@@ -1,6 +1,9 @@
 """QML-based application entry point for Video to Gaussian Splats Converter.
 
-Uses AppController to manage multiple project windows (one Backend per window).
+Startup sequence:
+1. Ensure "Splats Projects" folder exists in ~/Documents
+2. Restore last session (reopen previously open projects)
+3. If no session to restore, open one empty window
 """
 
 import sys
@@ -38,9 +41,14 @@ def main():
     # ── Window management ─────────────────────────────────────────────────
     controller = AppController()
 
-    # Try to restore previous session (reopens all windows from last run)
+    # 1. Ensure projects root folder exists
+    if not controller.ensure_projects_root():
+        print("No projects folder configured — exiting.", file=sys.stderr)
+        sys.exit(1)
+
+    # 2. Try to restore previous session
     if not controller.restore_session():
-        # No previous session → open one empty window
+        # 3. No previous session → open one empty window
         controller.create_window()
 
     sys.exit(app.exec())

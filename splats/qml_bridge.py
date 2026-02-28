@@ -386,7 +386,7 @@ class Backend(QObject):
         """Create a new project.  Uses save-file dialog so user can pick
         parent folder *and* type a project name.  If the current window
         already has a project, a new window is spawned instead."""
-        start = str(Path.home())
+        start = str(self._controller.projects_root) if self._controller and self._controller.projects_root else str(Path.home())
         file_path, _ = QFileDialog.getSaveFileName(
             None, "Create New Project", start, "Splats Project Folder (*)"
         )
@@ -408,8 +408,9 @@ class Backend(QObject):
     def openProject(self):
         """Open an existing project folder.  Spawns a new window if this
         window already has a project loaded."""
+        start = str(self._controller.projects_root) if self._controller and self._controller.projects_root else str(Path.home())
         dir_path = QFileDialog.getExistingDirectory(
-            None, "Open Project Folder", str(Path.home())
+            None, "Open Project Folder", start
         )
         if not dir_path:
             return
