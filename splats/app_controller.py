@@ -139,14 +139,21 @@ class AppController(QObject):
 
     def close_window(self, backend: "Backend"):
         """Remove a window and clean up."""
+        is_last = len(self._windows) == 1
+
+        if is_last:
+            # Save session BEFORE removing — so next launch reopens this project
+            self._save_session()
+
         for i, (engine, b) in enumerate(self._windows):
             if b is backend:
                 self._windows.pop(i)
-                # Schedule deletion — engine owns the QML window
                 engine.deleteLater()
                 break
 
-        self._save_session()
+        if not is_last:
+            # Save updated (smaller) list for remaining windows
+            self._save_session()
 
         # Quit app when last window closes
         if not self._windows:
