@@ -7,9 +7,12 @@ Rectangle {
 
     // ── Model properties ──
     property string label: "Stage"
+    property string stageKey: ""
     property string status: "pending"    // pending | running | completed | failed | cancelled
     property real   progress: 0.0        // 0..1
     property string detail: ""
+
+    signal openFolderClicked(string key)
 
     Layout.fillWidth: true
     implicitHeight: col.implicitHeight + 20
@@ -109,6 +112,30 @@ Rectangle {
                 text: root.detail || root.status
                 color: _statusColor()
                 font.pixelSize: Theme.fontSizeXs
+            }
+
+            // Open folder button (completed stages only)
+            Rectangle {
+                width: 22; height: 22
+                radius: Theme.radiusSm
+                color: folderMa.containsMouse ? Theme.surfaceHover : "transparent"
+                visible: root.status === "completed" && root.stageKey !== ""
+                Layout.alignment: Qt.AlignVCenter
+
+                Icon {
+                    anchors.centerIn: parent
+                    name: "folder-open"
+                    size: 14
+                    color: Theme.textMuted
+                }
+
+                MouseArea {
+                    id: folderMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openFolderClicked(root.stageKey)
+                }
             }
         }
 

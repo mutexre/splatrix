@@ -9,6 +9,7 @@ from typing import Optional
 from PyQt6.QtCore import (
     QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl, QVariant
 )
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QFileDialog, QApplication
 
 from .worker_threads import (
@@ -256,6 +257,15 @@ class Backend(QObject):
         )
         if file_path:
             self.outputPath = file_path
+
+    @pyqtSlot(str)
+    def openStageFolder(self, stage_key):
+        """Open file browser for a stage's output directory."""
+        path = self._stage_paths.get(stage_key)
+        if path and Path(path).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            self._log(f"Stage folder not available for: {stage_key}")
 
     @pyqtSlot()
     def startConversion(self):
@@ -773,6 +783,7 @@ class Backend(QObject):
             if not self._project.is_open:
                 self._project.new_project(video_path=self._video_path, settings=self._current_settings())
             self._project.update_stage('export', 'completed', ply_path=output_path)
+            self._stage_paths['export'] = str(Path(output_path).parent)
             if not self._project.project_path:
                 stem = Path(self._video_path).stem if self._video_path else "splats"
                 auto_path = self._workspace / f"{stem}.splatproj"
@@ -806,6 +817,12 @@ class Backend(QObject):
         self._project.update_stage('feature_extract', 'completed')
         self._project.update_stage('feature_match', 'completed')
         self._project.update_stage('reconstruction', 'completed', path=colmap_path)
+
+        # Track paths for "Open Folder" buttons
+        self._stage_paths['frames'] = images_path
+        self._stage_paths['feature_extract'] = colmap_path
+        self._stage_paths['feature_match'] = colmap_path
+        self._stage_paths['reconstruction'] = data_dir
         self._auto_save_project()
 
     def _on_stage_training_completed(self, checkpoint_dir: str, latest_checkpoint: str):
@@ -816,6 +833,8 @@ class Backend(QObject):
             checkpoint_dir=checkpoint_dir,
             latest_checkpoint=latest_checkpoint,
         )
+        # Track path for "Open Folder" button
+        self._stage_paths['training'] = checkpoint_dir
         self._auto_save_project()
         self._update_button_states()
 

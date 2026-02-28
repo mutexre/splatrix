@@ -311,10 +311,14 @@ Flickable {
 
                 StageIndicator {
                     Layout.fillWidth: true
+                    stageKey: modelData.key
                     label: modelData.label
                     status: modelData.status
                     progress: modelData.progress
                     detail: modelData.detail
+                    onOpenFolderClicked: function(key) {
+                        if (backend) backend.openStageFolder(key)
+                    }
                 }
             }
         }
