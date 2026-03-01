@@ -8,6 +8,7 @@ A project is a DIRECTORY containing:
 """
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -171,8 +172,12 @@ class ProjectManager:
             self._data['project']['modified'] = datetime.now().isoformat(timespec='seconds')
 
         save_file = self.project_dir / PROJECT_FILENAME
-        with open(save_file, 'w') as f:
+        tmp_file = save_file.with_suffix('.yaml.tmp')
+        with open(tmp_file, 'w') as f:
             yaml.dump(self._data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp_file.replace(save_file)  # atomic on POSIX
 
         self._add_to_recent(self.project_dir)
         return True

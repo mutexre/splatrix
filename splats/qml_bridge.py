@@ -267,6 +267,85 @@ class Backend(QObject):
 
         self._start_nerfstudio_pipeline()
 
+    @pyqtSlot(str)
+    def startFromStage(self, stage_key: str):
+        """Start pipeline from a specific stage, reusing earlier results."""
+        if not self._video_path:
+            self._log("Error: No video selected")
+            return
+        if self.isProcessing:
+            return
+
+        if not self._project.project_dir:
+            self._ensure_project_dir()
+            if not self._project.project_dir:
+                self._log("Error: No project directory set")
+                return
+
+        self._log("=" * 50)
+        self._log(f"Starting pipeline from stage: {stage_key}")
+        self._log(f"Project: {self._project.project_dir}")
+        self._set_status("Processing...")
+
+        # Determine what to skip based on requested start stage
+        stage_keys = [k for k, _ in STAGE_DEFS]
+        start_idx = stage_keys.index(stage_key) if stage_key in stage_keys else 0
+
+        if start_idx >= 5:  # export
+            # Need a checkpoint to export from
+            checkpoint = self._project.get_training_checkpoint()
+            if not checkpoint or not Path(checkpoint).exists():
+                self._log("Error: No training checkpoint found — run training first")
+                return
+            for k in stage_keys[:5]:
+                self._set_stage(k, 'completed', '')
+            self._set_stage('export', 'pending', 'Waiting...')
+            workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
+            output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
+            max_frames = self._max_frames if self._max_frames > 0 else 300
+            self._nerfstudio_worker = NerfstudioWorker(
+                video_path=self._video_path,
+                workspace_dir=workspace,
+                output_ply_path=output_ply,
+                max_iterations=self._training_iterations,
+                use_video_directly=True,
+                num_frames_target=max_frames,
+                skip_data_processing=True,
+                skip_training=True,
+                existing_checkpoint=checkpoint,
+                existing_data_dir=self._project.get_stage('reconstruction').get('path'),
+            )
+        elif start_idx >= 4:  # training
+            data_dir = self._project.get_stage('reconstruction').get('path')
+            if not data_dir or not Path(data_dir).exists():
+                self._log("Error: No reconstruction data found — run earlier stages first")
+                return
+            for k in stage_keys[:4]:
+                self._set_stage(k, 'completed', '')
+            for k in stage_keys[4:]:
+                self._set_stage(k, 'pending', 'Waiting...')
+            workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
+            output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
+            max_frames = self._max_frames if self._max_frames > 0 else 300
+            self._nerfstudio_worker = NerfstudioWorker(
+                video_path=self._video_path,
+                workspace_dir=workspace,
+                output_ply_path=output_ply,
+                max_iterations=self._training_iterations,
+                use_video_directly=True,
+                num_frames_target=max_frames,
+                skip_data_processing=True,
+                existing_data_dir=data_dir,
+            )
+        else:
+            # Start from beginning (stages 0-3 are COLMAP — atomic unit)
+            self._start_nerfstudio_pipeline()
+            return
+
+        self._connect_nerfstudio_worker()
+        self._nerfstudio_worker.start()
+        self._update_button_states()
+
     @pyqtSlot()
     def exportPly(self):
         """Export the project's PLY to a user-chosen location."""

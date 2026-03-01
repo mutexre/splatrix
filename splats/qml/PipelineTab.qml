@@ -205,6 +205,24 @@ Item {
                         status: s ? s.status : "pending"
                         progress: s ? s.progress : 0.0
                         detail: s ? s.detail : ""
+
+                        // Play enabled when: has video, not processing, and
+                        // all prior stages are completed (or this is stage 0)
+                        canPlay: {
+                            if (!backend || !backend.hasVideo || backend.isProcessing)
+                                return false;
+                            // All earlier stages must be completed
+                            for (var i = 0; i < index; i++) {
+                                var prev = backend.stages[i];
+                                if (!prev || prev.status !== "completed")
+                                    return false;
+                            }
+                            return true;
+                        }
+
+                        onPlayClicked: function(key) {
+                            if (backend) backend.startFromStage(key)
+                        }
                         onOpenFolderClicked: function(key) {
                             if (backend) backend.openStageFolder(key)
                         }

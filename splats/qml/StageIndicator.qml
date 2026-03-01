@@ -12,7 +12,9 @@ Rectangle {
     property real   progress: 0.0        // 0..1
     property string detail: ""
 
+    property bool canPlay: false    // controlled by parent
     signal openFolderClicked(string key)
+    signal playClicked(string key)
 
     Layout.fillWidth: true
     implicitHeight: col.implicitHeight + 20
@@ -107,11 +109,37 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            // Detail / status text
+            // Detail text (hidden when completed — icon is enough)
             Text {
                 text: root.detail || root.status
                 color: _statusColor()
                 font.pixelSize: Theme.fontSizeXs
+                visible: root.status !== "completed"
+            }
+
+            // Play button (start from this stage)
+            Rectangle {
+                width: 24; height: 24
+                radius: Theme.radiusSm
+                color: playMa.containsMouse ? Theme.surfaceHover : "transparent"
+                visible: root.canPlay && root.status !== "running"
+                opacity: root.canPlay ? 1.0 : 0.3
+                Layout.alignment: Qt.AlignVCenter
+
+                Icon {
+                    anchors.centerIn: parent
+                    name: "play"
+                    size: 14
+                    color: Theme.accent
+                }
+
+                MouseArea {
+                    id: playMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.playClicked(root.stageKey)
+                }
             }
 
             // Open folder button (completed stages only)
