@@ -7,7 +7,7 @@ Item {
     id: root
 
     property var images: backend ? backend.frameImages : []
-    property int fitMode: 0  // 0=Fit, 1=Fill, 2=Stretch
+    property int fitMode: 0  // 0=Fit, 1=Fill
 
     Rectangle {
         anchors.fill: parent
@@ -86,7 +86,7 @@ Item {
                 spacing: 2
 
                 Repeater {
-                    model: ["Fit", "Fill", "Stretch"]
+                    model: ["Fit", "Fill"]
                     Rectangle {
                         width: label.implicitWidth + 16
                         height: 24
@@ -162,6 +162,10 @@ Item {
         }
     }
 
+    // Resolved fillMode — delegates bind to this, avoids per-image ternary
+    property int _qFillMode: fitMode === 0 ? Image.PreserveAspectFit
+                                           : Image.PreserveAspectCrop
+
     // Image grid
     GridView {
         id: grid
@@ -177,6 +181,8 @@ Item {
         cellHeight: thumbSize + 4
         clip: true
         visible: images && images.length > 0
+        cacheBuffer: 600   // keep off-screen delegates alive to prevent flicker
+        reuseItems: true   // recycle delegates instead of destroying/creating
 
         model: images ? images.length : 0
 
@@ -199,12 +205,11 @@ Item {
                 clip: true
 
                 Image {
+                    id: thumbImg
                     anchors.fill: parent
                     anchors.margins: 1
                     source: images[index]
-                    fillMode: root.fitMode === 0 ? Image.PreserveAspectFit
-                            : root.fitMode === 1 ? Image.PreserveAspectCrop
-                            : Image.Stretch
+                    fillMode: root._qFillMode
                     asynchronous: true
                     cache: true
                     smooth: true
@@ -216,7 +221,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     color: Theme.border
-                    visible: parent.children[0].status !== Image.Ready
+                    visible: thumbImg.status !== Image.Ready
                     radius: Theme.radiusSm
                     opacity: 0.5
                 }
