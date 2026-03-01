@@ -898,7 +898,7 @@ class Backend(QObject):
         elif "Export" in stage:
             self._set_status("Exporting PLY...")
 
-        # Map to stages (same logic as main_window.py)
+        # Map nerfstudio output to pipeline stages
         if "Data" in stage:
             ws_base = self._project.workspace_dir or (self._workspace / "nerfstudio")
             ws_data = ws_base / "nerfstudio_data"

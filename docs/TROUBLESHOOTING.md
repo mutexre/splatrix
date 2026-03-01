@@ -146,7 +146,7 @@ conda remove qt-main harfbuzz pango --force -y
 
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 pip install nerfstudio
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Application Issues

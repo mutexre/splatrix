@@ -1,5 +1,4 @@
 include LICENSE
 include README.md
-include requirements.txt
 recursive-include splatrix/qml *.qml *.ttf *.svg qmldir
 recursive-include splatrix/viewer *.html

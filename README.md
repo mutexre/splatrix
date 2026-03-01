@@ -93,7 +93,7 @@ conda activate splatrix
 pip install -e ".[dev]"
 
 # Run directly
-python run_qml.py
+python run.py
 ```
 
 ## Troubleshooting
