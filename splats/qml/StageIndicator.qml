@@ -110,12 +110,12 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            // Detail text (hidden when completed — icon is enough)
+            // Detail text (hidden when completed or pending — icon is enough)
             Text {
                 text: root.detail || root.status
                 color: _statusColor()
                 font.pixelSize: Theme.fontSizeXs
-                visible: root.status !== "completed"
+                visible: root.status !== "completed" && root.status !== "pending"
             }
 
             // ETA label (shown only during running with valid ETA)
