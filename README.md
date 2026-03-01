@@ -25,21 +25,26 @@ Splats is a desktop application that takes a video file and produces a 3D Gaussi
 | VRAM | 8 GB+ recommended |
 | Conda | Miniconda or Anaconda |
 
-## Quick Install
+## Install
+
+One command, no prerequisites (just Linux x86_64 + NVIDIA drivers):
 
 ```bash
-git clone https://github.com/splats-app/splats.git
-cd splats
-./install.sh
+curl -fsSL https://splats-app.github.io/splats/install.sh | bash
 ```
 
-The installer creates a `splats` conda environment and installs all dependencies including PyTorch, COLMAP, FFmpeg, and Nerfstudio.
+This automatically installs Miniconda (if needed), PyTorch, COLMAP, FFmpeg, Nerfstudio, and the Splats app.
 
 ## Run
 
 ```bash
-conda activate splats
 splats
+```
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/splats-app/splats/main/uninstall.sh | bash
 ```
 
 ## Usage
