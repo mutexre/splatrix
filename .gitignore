@@ -35,12 +35,17 @@ env/
 
 # Project specific
 .splats_workspace/
+outputs/
 *.ply
-frames/
-reconstruction/
-output/
 
 # OS
 .DS_Store
 Thumbs.db
 
+# Website build
+website/node_modules/
+website/dist/
+
+# Web prototype (dev only)
+web/node_modules/
+web/dist/

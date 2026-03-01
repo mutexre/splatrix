@@ -1,90 +1,100 @@
-# Video to Gaussian Splats Converter
+# Splats
 
-Convert video files to 3D Gaussian Splats in PLY format using a PyQt6 interface.
+**Convert any video into 3D Gaussian Splats — one click.**
+
+Splats is a desktop application that takes a video file and produces a 3D Gaussian Splat in PLY format. It wraps the [Nerfstudio](https://docs.nerf.studio/) pipeline behind an intuitive QML interface with real-time progress tracking, an embedded 3D viewer, and project persistence.
 
 ## Features
 
-- **Video Processing**: Extract frames from video files (any format supported by OpenCV)
-- **Multiple Reconstruction Methods**:
-  - **Mock Mode**: Fast test mode with random Gaussian Splats
-  - **Nerfstudio (Recommended)**: Full pipeline with splatfacto (camera pose estimation + training + export)
-  - **COLMAP**: Structure from Motion (experimental)
-- **Real-time Progress Tracking**: Live progress bars and logs
-- **Non-blocking UI**: All operations run asynchronously - UI remains responsive
-- **PLY Export**: Standard Gaussian Splats PLY format with positions, colors, scales, rotations, opacities
+- **One-click pipeline** — drop a video, click Start, get a `.ply`
+- **6-stage progress** — Frame Extraction → Feature Extraction → Feature Matching → Sparse Reconstruction → Training → Export
+- **Embedded 3D viewer** — preview your Gaussian Splat right inside the app
+- **Frame browser** — inspect extracted frames in a grid view
+- **Video preview** — play/seek the source video
+- **Project persistence** — save/restore projects, resume from any stage
+- **Multi-window** — work on multiple projects simultaneously
+- **ETA tracking** — estimated time remaining per stage
 
 ## Requirements
 
-- Python 3.10+
-- Conda environment: `splats`
-- COLMAP (optional, for full 3D reconstruction)
-- nerfstudio (optional, for advanced Gaussian Splatting)
+| Component | Version |
+|-----------|---------|
+| OS | Linux (tested on RHEL 9 / Ubuntu 22.04+) |
+| Python | 3.10+ |
+| GPU | NVIDIA with CUDA 12.x (required for training) |
+| VRAM | 8 GB+ recommended |
+| Conda | Miniconda or Anaconda |
 
-## Installation
+## Quick Install
 
 ```bash
-# Create conda environment
-conda create -n splats python=3.10
-conda activate splats
-
-# Install PyTorch with CUDA (required for nerfstudio)
-conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia
-
-# Install other dependencies
-pip install -r requirements.txt
+git clone https://github.com/splats-app/splats.git
+cd splats
+./install.sh
 ```
 
-**Note**: Requires NVIDIA GPU with CUDA for nerfstudio Gaussian Splatting training.
+The installer creates a `splats` conda environment and installs all dependencies including PyTorch, COLMAP, FFmpeg, and Nerfstudio.
+
+## Run
+
+```bash
+conda activate splats
+splats
+```
 
 ## Usage
 
-```bash
-conda activate splats
-python -m splats.main_window
+1. Click **Select Video** and choose your video file
+2. Adjust **Max Frames** (30 is a good default) and **Training Iterations** (default 30,000)
+3. Click **Start Conversion**
+4. Monitor progress across all 6 stages
+5. When complete, view the result in the **3D Viewer** tab
+6. Click **Export PLY** to save the result
+
+### Time Estimates
+
+| Stage | Duration |
+|-------|----------|
+| Data processing (frames, features, matching, reconstruction) | 2–10 min |
+| Training | 10–30 min |
+| Export | < 1 min |
+
+## Project Structure
+
+```
+splats/
+├── splats/               # Python package
+│   ├── main_qml.py       # Application entry point
+│   ├── qml_bridge.py     # Python ↔ QML bridge
+│   ├── app_controller.py # Multi-window management
+│   ├── project_manager.py # Project persistence (YAML)
+│   ├── worker_threads.py # Background processing
+│   ├── nerfstudio_integration.py
+│   ├── direct_ply_export.py
+│   ├── ply_exporter.py
+│   ├── qml/              # QML UI files
+│   └── viewer/           # Embedded 3D viewer (Three.js)
+├── website/              # GitHub Pages site
+├── install.sh            # One-line installer
+├── pyproject.toml        # Package metadata
+└── LICENSE               # MIT
 ```
 
-## Usage Guide
+## Development
 
-### Quick Start (Mock Mode)
+```bash
+# Install in development mode
+conda activate splats
+pip install -e ".[dev]"
 
-1. Launch application
-2. Click "Select Video" and choose your video file
-3. Keep "Mock (Fast, test only)" selected
-4. Click "Start Conversion"
-5. Wait ~10 seconds for mock data generation
-6. Output PLY saved to `~/.splats_workspace/output.ply`
+# Run directly
+python run_qml.py
+```
 
-### Real Reconstruction (Nerfstudio)
+## Troubleshooting
 
-1. Select "Nerfstudio (Real, GPU required)" method
-2. Adjust training iterations (30,000 default, higher = better quality)
-3. Click "Start Conversion"
-4. Wait 10-30 minutes (depends on GPU and iterations)
-5. Output PLY contains real trained Gaussian Splats
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-**Time estimates**:
-- Data processing: 2-5 minutes
-- Training: 10-25 minutes
-- Export: < 1 minute
+## License
 
-## Architecture
-
-- `splats/main_window.py` - Main PyQt6 application window with responsive UI
-- `splats/video_processor.py` - Video frame extraction using OpenCV/PyAV
-- `splats/nerfstudio_integration.py` - Nerfstudio pipeline integration (splatfacto)
-- `splats/reconstruction_pipeline.py` - Mock and COLMAP reconstruction
-- `splats/ply_exporter.py` - PLY file generation
-- `splats/worker_threads.py` - QThread workers for async operations
-
-## Documentation
-
-Comprehensive documentation available in the `docs/` directory:
-
-- **Setup guides**: Installation, CUDA setup, nerfstudio configuration
-- **Architecture docs**: System design, stage tracking, video processors
-- **Bug fixes**: Detailed root cause analysis for all resolved issues
-- **Troubleshooting**: Common problems and solutions
-- **Debug guides**: Step-by-step debugging procedures
-
-See [docs/INDEX.md](docs/INDEX.md) for complete documentation index
-
+MIT — see [LICENSE](LICENSE).

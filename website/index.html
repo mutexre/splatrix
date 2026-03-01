@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Splats — Video to 3D Gaussian Splats</title>
+    <meta name="description" content="Convert any video into 3D Gaussian Splats with one click. Open-source desktop app powered by Nerfstudio.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Favicon (inline SVG as data URI) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%236366f1'/><text x='16' y='23' font-size='20' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='700'>S</text></svg>">
+
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --text: #e4e4e7;
+            --text-muted: #71717a;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --success: #22c55e;
+            --radius: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            background: rgba(10, 10, 15, 0.85);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text);
+            font-weight: 700;
+            font-size: 20px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 18px;
+            color: white;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover { color: var(--text); }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--text-muted);
+            transform: translateY(-1px);
+        }
+
+        .btn-lg {
+            padding: 14px 28px;
+            font-size: 16px;
+            border-radius: 10px;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            padding: 160px 24px 100px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 600px;
+            background: radial-gradient(ellipse, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--accent-hover);
+            margin-bottom: 32px;
+        }
+
+        .hero h1 {
+            font-size: clamp(40px, 6vw, 72px);
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+            margin-bottom: 20px;
+        }
+
+        .hero h1 .gradient {
+            background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 50%, #f472b6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 40px;
+            line-height: 1.7;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* ── Install snippet ── */
+        .install-snippet {
+            max-width: 520px;
+            margin: 48px auto 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .install-header {
+            padding: 10px 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .install-header .dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .install-header .dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border);
+        }
+
+        .install-body {
+            padding: 20px 24px;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.8;
+            color: var(--text-muted);
+        }
+
+        .install-body .cmd { color: var(--success); }
+        .install-body .comment { color: #525268; }
+
+        /* ── Features ── */
+        .features {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .section-label {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+        }
+
+        .section-desc {
+            font-size: 16px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin-bottom: 48px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .feature-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: rgba(99, 102, 241, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            font-size: 22px;
+        }
+
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* ── Pipeline ── */
+        .pipeline {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .pipeline-steps {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .pipeline-step {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            text-align: center;
+            flex: 1;
+            min-width: 160px;
+            position: relative;
+        }
+
+        .pipeline-step .step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+        }
+
+        .pipeline-step h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .pipeline-step p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* ── Requirements ── */
+        .requirements {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 24px;
+        }
+
+        .req-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .req-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+        }
+
+        .req-card .req-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .req-card .req-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .req-card .req-note {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ── Footer ── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 24px;
+            text-align: center;
+        }
+
+        footer p {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover { text-decoration: underline; }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            .nav-links { display: none; }
+            .hero { padding: 120px 16px 60px; }
+            .hero p { font-size: 16px; }
+            .pipeline-steps { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <div class="nav-inner">
+        <a href="#" class="logo">
+            <div class="logo-icon">S</div>
+            Splats
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#pipeline">Pipeline</a>
+            <a href="#requirements">Requirements</a>
+            <a href="https://github.com/splats-app/splats" class="btn btn-secondary" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Open Source &mdash; MIT License
+    </div>
+    <h1>
+        Video to <span class="gradient">3D Gaussian Splats</span><br>
+        in one click
+    </h1>
+    <p>
+        Drop a video, click Start, and get a photorealistic 3D scene.
+        Splats wraps the entire Nerfstudio pipeline behind a clean desktop UI
+        with real-time progress tracking and an embedded 3D viewer.
+    </p>
+    <div class="hero-buttons">
+        <a href="https://github.com/splats-app/splats" class="btn btn-primary btn-lg" target="_blank">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            Get Started
+        </a>
+        <a href="#pipeline" class="btn btn-secondary btn-lg">
+            How it works
+        </a>
+    </div>
+
+    <div class="install-snippet">
+        <div class="install-header">
+            <div class="dots"><span></span><span></span><span></span></div>
+            Terminal
+        </div>
+        <div class="install-body">
+            <div><span class="comment"># Clone and install</span></div>
+            <div><span class="cmd">git clone</span> https://github.com/splats-app/splats.git</div>
+            <div><span class="cmd">cd</span> splats && <span class="cmd">./install.sh</span></div>
+            <br>
+            <div><span class="comment"># Run</span></div>
+            <div><span class="cmd">conda activate</span> splats</div>
+            <div><span class="cmd">splats</span></div>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Everything you need</h2>
+    <p class="section-desc">
+        From video input to 3D Gaussian Splat output &mdash; no command-line expertise required.
+    </p>
+
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon">&#9654;</div>
+            <h3>One-Click Pipeline</h3>
+            <p>Select a video, adjust settings, click Start. The entire Nerfstudio pipeline runs automatically with real-time progress tracking.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#9724;</div>
+            <h3>Embedded 3D Viewer</h3>
+            <p>Preview your Gaussian Splat directly inside the app using a WebGL-based viewer powered by GaussianSplats3D.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#128247;</div>
+            <h3>Frame Browser</h3>
+            <p>Inspect extracted frames in a responsive grid view with adjustable thumbnail sizes and fit modes.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#128190;</div>
+            <h3>Project Persistence</h3>
+            <p>Save and restore projects. Resume interrupted processing from any completed stage. Work on multiple projects simultaneously.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#9200;</div>
+            <h3>ETA Tracking</h3>
+            <p>Real-time estimated time remaining for each processing stage, so you always know when your splat will be ready.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#128295;</div>
+            <h3>Flexible Export</h3>
+            <p>Export to standard PLY format compatible with all major Gaussian Splatting viewers and editors.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Pipeline -->
+<section class="pipeline" id="pipeline">
+    <div style="text-align: center;">
+        <div class="section-label">Pipeline</div>
+        <h2 class="section-title">Six automated stages</h2>
+        <p class="section-desc" style="margin: 0 auto 48px;">
+            Each stage runs sequentially with detailed progress. Start from any completed stage to iterate quickly.
+        </p>
+    </div>
+
+    <div class="pipeline-steps">
+        <div class="pipeline-step">
+            <div class="step-num">1</div>
+            <h4>Frame Extraction</h4>
+            <p>Extract frames from video at configurable intervals</p>
+        </div>
+        <div class="pipeline-step">
+            <div class="step-num">2</div>
+            <h4>Feature Extraction</h4>
+            <p>Detect visual features using COLMAP SIFT</p>
+        </div>
+        <div class="pipeline-step">
+            <div class="step-num">3</div>
+            <h4>Feature Matching</h4>
+            <p>Match features across frame pairs</p>
+        </div>
+        <div class="pipeline-step">
+            <div class="step-num">4</div>
+            <h4>Reconstruction</h4>
+            <p>Sparse 3D reconstruction + camera poses</p>
+        </div>
+        <div class="pipeline-step">
+            <div class="step-num">5</div>
+            <h4>Training</h4>
+            <p>Train splatfacto Gaussian Splat model</p>
+        </div>
+        <div class="pipeline-step">
+            <div class="step-num">6</div>
+            <h4>Export</h4>
+            <p>Export trained model to PLY format</p>
+        </div>
+    </div>
+</section>
+
+<!-- Requirements -->
+<section class="requirements" id="requirements">
+    <div style="text-align: center;">
+        <div class="section-label">Requirements</div>
+        <h2 class="section-title">System requirements</h2>
+        <p class="section-desc" style="margin: 0 auto 48px;">
+            GPU training requires an NVIDIA card. CPU-only mode is not currently supported.
+        </p>
+    </div>
+
+    <div class="req-grid">
+        <div class="req-card">
+            <div class="req-label">Operating System</div>
+            <div class="req-value">Linux</div>
+            <div class="req-note">Tested on RHEL 9, Ubuntu 22.04+</div>
+        </div>
+        <div class="req-card">
+            <div class="req-label">Python</div>
+            <div class="req-value">3.10+</div>
+            <div class="req-note">Managed via Conda</div>
+        </div>
+        <div class="req-card">
+            <div class="req-label">GPU</div>
+            <div class="req-value">NVIDIA + CUDA 12.x</div>
+            <div class="req-note">8 GB+ VRAM recommended</div>
+        </div>
+        <div class="req-card">
+            <div class="req-label">Dependencies</div>
+            <div class="req-value">Auto-installed</div>
+            <div class="req-note">PyTorch, COLMAP, Nerfstudio, FFmpeg</div>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <p>
+        Splats is open source under the <a href="https://github.com/splats-app/splats/blob/main/LICENSE">MIT License</a>.
+        Built with <a href="https://docs.nerf.studio/" target="_blank">Nerfstudio</a>,
+        <a href="https://www.qt.io/" target="_blank">Qt/QML</a>, and
+        <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank">GaussianSplats3D</a>.
+    </p>
+</footer>
+
+</body>
+</html>
