@@ -91,7 +91,7 @@
         scene.add(new THREE.GridHelper(10, 10, 0x444444, 0x222222));
 
         // ── PLY loader ─────────────────────────────────────────
-        const loader = new THREE.PLYLoader();
+        const loader = new PLYLoader();
 
         function showPLY(geometry) {
             scene.children = scene.children.filter(c => !(c instanceof THREE.Points));
