@@ -77,11 +77,12 @@
         <div id="stats"></div>
     </div>
 
-    <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
-        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/OrbitControls.js';
-        import { PLYLoader } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/loaders/PLYLoader.js';
+    <!-- Classic script tags — ES modules don't work in local WebEngineView -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.159.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.159.0/examples/js/loaders/PLYLoader.js"></script>
 
+    <script>
         const statusEl = document.getElementById('status');
         const statsEl = document.getElementById('stats');
         const canvas = document.getElementById('canvas');
@@ -111,7 +112,7 @@
         renderer.setPixelRatio(window.devicePixelRatio);
 
         // Controls
-        const controls = new OrbitControls(camera, canvas);
+        const controls = new THREE.OrbitControls(camera, canvas);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = false;
@@ -131,74 +132,70 @@
         scene.add(gridHelper);
 
         // Load PLY
-        const loader = new PLYLoader();
+        const loader = new THREE.PLYLoader();
 
-        if (!plyPath) {
-            statusEl.textContent = 'No PLY loaded — run pipeline or open a project';
-        } else {
-            statusEl.textContent = 'Loading PLY...';
+        function loadPLYGeometry(geometry) {
+            // Remove existing points
+            scene.children = scene.children.filter(
+                child => !(child instanceof THREE.Points)
+            );
+
+            const vertexCount = geometry.attributes.position.count;
+            statsEl.textContent = 'Gaussians: ' + vertexCount.toLocaleString();
+
+            const material = new THREE.PointsMaterial({
+                size: 0.02,
+                vertexColors: true,
+                sizeAttenuation: true
+            });
+
+            if (!geometry.attributes.color) {
+                const colors = new Float32Array(vertexCount * 3);
+                for (let i = 0; i < vertexCount * 3; i++) {
+                    colors[i] = 1.0;
+                }
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            }
+
+            const points = new THREE.Points(geometry, material);
+            scene.add(points);
+
+            geometry.computeBoundingBox();
+            const bbox = geometry.boundingBox;
+            const center = new THREE.Vector3();
+            bbox.getCenter(center);
+            points.position.sub(center);
+
+            const size = bbox.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            camera.position.set(maxDim, maxDim * 0.5, maxDim);
+            controls.target.set(0, 0, 0);
+            controls.update();
+
+            statusEl.textContent = 'Loaded';
+            console.log('PLY loaded:', { vertices: vertexCount, size: size });
         }
 
-        if (plyPath) { loader.load(
-            plyPath,
-            (geometry) => {
-                statusEl.textContent = 'Loaded successfully';
-                
-                // Count vertices
-                const vertexCount = geometry.attributes.position.count;
-                statsEl.textContent = `Gaussians: ${vertexCount.toLocaleString()}`;
-
-                // Create material
-                const material = new THREE.PointsMaterial({
-                    size: 0.02,
-                    vertexColors: true,
-                    sizeAttenuation: true
-                });
-
-                // Check if colors exist
-                if (!geometry.attributes.color) {
-                    // No colors - use white
-                    const colors = new Float32Array(vertexCount * 3);
-                    for (let i = 0; i < vertexCount * 3; i++) {
-                        colors[i] = 1.0;
+        if (!plyPath) {
+            statusEl.textContent = 'No PLY loaded \u2014 run pipeline or open a project';
+        } else {
+            statusEl.textContent = 'Loading PLY...';
+            loader.load(
+                plyPath,
+                function(geometry) { loadPLYGeometry(geometry); },
+                function(xhr) {
+                    if (xhr.total > 0) {
+                        var percent = (xhr.loaded / xhr.total * 100).toFixed(1);
+                        statusEl.textContent = 'Loading: ' + percent + '%';
                     }
-                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                },
+                function(error) {
+                    statusEl.textContent = 'Error: ' + error.message;
+                    statusEl.className = 'error';
+                    console.error('PLY loading error:', error);
                 }
-
-                // Create points mesh
-                const points = new THREE.Points(geometry, material);
-                scene.add(points);
-
-                // Center geometry
-                geometry.computeBoundingBox();
-                const bbox = geometry.boundingBox;
-                const center = new THREE.Vector3();
-                bbox.getCenter(center);
-                points.position.sub(center);
-
-                // Adjust camera
-                const size = bbox.getSize(new THREE.Vector3());
-                const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(maxDim, maxDim * 0.5, maxDim);
-                controls.target.set(0, 0, 0);
-                controls.update();
-
-                console.log('PLY loaded:', {
-                    vertices: vertexCount,
-                    size: size,
-                    center: center
-                });
-            },
-            (xhr) => {
-                const percent = (xhr.loaded / xhr.total * 100).toFixed(1);
-                statusEl.textContent = `Loading: ${percent}%`;
-            },
-            (error) => {
-                statusEl.textContent = `Error: ${error.message}`;
-                statusEl.className = 'error';
-                console.error('PLY loading error:', error);
-            }
-        ); }
+            );
+        }
 
         // Animation loop
         function animate() {
@@ -209,7 +206,7 @@
         animate();
 
         // Handle window resize
-        window.addEventListener('resize', () => {
+        window.addEventListener('resize', function() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -219,41 +216,7 @@
         window.loadPLY = function(path) {
             statusEl.textContent = 'Loading new PLY...';
             statsEl.textContent = '';
-            
-            // Clear existing points
-            scene.children = scene.children.filter(
-                child => !(child instanceof THREE.Points)
-            );
-            
-            loader.load(path, (geometry) => {
-                const vertexCount = geometry.attributes.position.count;
-                statsEl.textContent = `Gaussians: ${vertexCount.toLocaleString()}`;
-                
-                const material = new THREE.PointsMaterial({
-                    size: 0.02,
-                    vertexColors: true,
-                    sizeAttenuation: true
-                });
-                
-                if (!geometry.attributes.color) {
-                    const colors = new Float32Array(vertexCount * 3);
-                    for (let i = 0; i < vertexCount * 3; i++) {
-                        colors[i] = 1.0;
-                    }
-                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                }
-                
-                const points = new THREE.Points(geometry, material);
-                scene.add(points);
-                
-                geometry.computeBoundingBox();
-                const bbox = geometry.boundingBox;
-                const center = new THREE.Vector3();
-                bbox.getCenter(center);
-                points.position.sub(center);
-                
-                statusEl.textContent = 'Loaded';
-            });
+            loader.load(path, function(geometry) { loadPLYGeometry(geometry); });
         };
     </script>
 </body>

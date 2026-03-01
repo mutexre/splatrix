@@ -251,9 +251,9 @@ Item {
 
             IconButton {
                 text: "Export PLY"
-                iconName: "rotate-ccw"
-                enabled: backend ? (backend.canResumeTraining && !backend.isProcessing) : false
-                onClicked: backend.resumeFromTraining()
+                iconName: "box"
+                enabled: backend ? backend.canExportPly : false
+                onClicked: backend.exportPly()
             }
 
             IconButton {

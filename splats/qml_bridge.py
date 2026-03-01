@@ -47,7 +47,7 @@ class Backend(QObject):
     trainingIterationsChanged = pyqtSignal()
     projectDirChanged = pyqtSignal()
     isProcessingChanged = pyqtSignal()
-    canResumeTrainingChanged = pyqtSignal()
+    canExportPlyChanged = pyqtSignal()
     statusTextChanged = pyqtSignal()
     stagesChanged = pyqtSignal()
     logContentChanged = pyqtSignal()
@@ -154,12 +154,12 @@ class Backend(QObject):
             self._export_worker and self._export_worker.isRunning(),
         ])
 
-    @pyqtProperty(bool, notify=canResumeTrainingChanged)
-    def canResumeTraining(self):
+    @pyqtProperty(bool, notify=canExportPlyChanged)
+    def canExportPly(self):
+        ply = self._project.output_ply_path
         return (
             not self.isProcessing and
-            self._project.is_open and
-            self._project.can_resume_from_training()
+            ply is not None and ply.exists()
         )
 
     @pyqtProperty(str, notify=statusTextChanged)
@@ -268,38 +268,27 @@ class Backend(QObject):
         self._start_nerfstudio_pipeline()
 
     @pyqtSlot()
-    def resumeFromTraining(self):
-        checkpoint = self._project.get_training_checkpoint()
-        if not checkpoint or not Path(checkpoint).exists():
-            self._log("No valid checkpoint found in project")
+    def exportPly(self):
+        """Export the project's PLY to a user-chosen location."""
+        src = self._project.output_ply_path
+        if not src or not src.exists():
+            self._log("No PLY file in project — run pipeline first")
             return
 
-        self._log(f"[Resume] Starting from checkpoint: {Path(checkpoint).name}")
-        self._log("Skipping data processing and training")
-
-        for key in ['frames', 'feature_extract', 'feature_match', 'reconstruction', 'training']:
-            self._set_stage(key, 'completed', 'Skipped')
-        self._set_stage('export', 'pending', 'Waiting...')
-
-        workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
-        output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
-        max_frames = self._max_frames if self._max_frames > 0 else 300
-
-        self._nerfstudio_worker = NerfstudioWorker(
-            video_path=self._video_path or "",
-            workspace_dir=workspace,
-            output_ply_path=output_ply,
-            max_iterations=self._training_iterations,
-            use_video_directly=True,
-            num_frames_target=max_frames,
-            skip_data_processing=True,
-            skip_training=True,
-            existing_checkpoint=checkpoint,
-            existing_data_dir=self._project.get_stage('reconstruction').get('path'),
+        dst, _ = QFileDialog.getSaveFileName(
+            None, "Export PLY",
+            str(Path.home() / src.name),
+            "PLY Files (*.ply)"
         )
-        self._connect_nerfstudio_worker()
-        self._nerfstudio_worker.start()
-        self._update_button_states()
+        if not dst:
+            return
+
+        import shutil
+        try:
+            shutil.copy2(str(src), dst)
+            self._log(f"Exported PLY to {dst}")
+        except Exception as e:
+            self._log(f"Export failed: {e}")
 
     @pyqtSlot()
     def cancel(self):
@@ -459,7 +448,7 @@ class Backend(QObject):
 
     def _update_button_states(self):
         self.isProcessingChanged.emit()
-        self.canResumeTrainingChanged.emit()
+        self.canExportPlyChanged.emit()
 
     def _set_data_stage_paths(self, ws_data: Path):
         """Set all data-stage folder paths from the nerfstudio data directory."""
