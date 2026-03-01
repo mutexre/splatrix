@@ -86,6 +86,9 @@ class Backend(QObject):
         self._workspace.mkdir(exist_ok=True)
         self._settings_file = self._workspace / "settings.json"
 
+        # Last-used directories for file/folder dialogs (keyed by purpose)
+        self._last_dirs: dict[str, str] = {}
+
         # Workers
         self._nerfstudio_worker: Optional[NerfstudioWorker] = None
         self._video_worker: Optional[VideoProcessingWorker] = None
@@ -206,7 +209,10 @@ class Backend(QObject):
 
     @pyqtSlot()
     def selectVideo(self):
-        start_dir = str(Path(self._video_path).parent) if self._video_path else str(Path.home())
+        start_dir = self._get_last_dir(
+            "video",
+            str(Path(self._video_path).parent) if self._video_path else "",
+        )
 
         VIDEO_EXTS = [
             "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mts", "ts",
@@ -224,6 +230,7 @@ class Backend(QObject):
         file_path, _ = QFileDialog.getOpenFileName(None, "Select Video File", start_dir, filter_str)
 
         if file_path:
+            self._set_last_dir("video", file_path)
             self._video_path = file_path
             self.videoNameChanged.emit()
             self.videoUrlChanged.emit()
@@ -364,14 +371,14 @@ class Backend(QObject):
             self._log("No PLY file in project — run pipeline first")
             return
 
+        start = str(Path(self._get_last_dir("export_ply")) / src.name)
         dst, _ = QFileDialog.getSaveFileName(
-            None, "Export PLY",
-            str(Path.home() / src.name),
-            "PLY Files (*.ply)"
+            None, "Export PLY", start, "PLY Files (*.ply)"
         )
         if not dst:
             return
 
+        self._set_last_dir("export_ply", dst)
         import shutil
         try:
             shutil.copy2(str(src), dst)
@@ -443,12 +450,15 @@ class Backend(QObject):
         """Create a new project.  Uses save-file dialog so user can pick
         parent folder *and* type a project name.  If the current window
         already has a project, a new window is spawned instead."""
-        start = str(self._controller.projects_root) if self._controller and self._controller.projects_root else str(Path.home())
+        default = str(self._controller.projects_root) if self._controller and self._controller.projects_root else ""
+        start = self._get_last_dir("new_project", default)
         file_path, _ = QFileDialog.getSaveFileName(
             None, "Create New Project", start, "Splatrix Project Folder (*)"
         )
         if not file_path:
             return
+
+        self._set_last_dir("new_project", file_path)
 
         proj_dir = Path(file_path)
         # Sanitize: spaces in paths break nerfstudio/COLMAP shell commands
@@ -469,12 +479,15 @@ class Backend(QObject):
     def openProject(self):
         """Open an existing project folder.  Spawns a new window if this
         window already has a project loaded."""
-        start = str(self._controller.projects_root) if self._controller and self._controller.projects_root else str(Path.home())
+        default = str(self._controller.projects_root) if self._controller and self._controller.projects_root else ""
+        start = self._get_last_dir("open_project", default)
         dir_path = QFileDialog.getExistingDirectory(
             None, "Open Project Folder", start
         )
         if not dir_path:
             return
+
+        self._set_last_dir("open_project", dir_path)
 
         if self._project.is_open and self._controller:
             # Current window has a project → spawn new window
@@ -617,6 +630,8 @@ class Backend(QObject):
                 self._training_iterations = s['training_iterations']
             if 'max_frames' in s:
                 self._max_frames = s['max_frames']
+            if 'last_dirs' in s and isinstance(s['last_dirs'], dict):
+                self._last_dirs = s['last_dirs']
         except Exception as e:
             self._log(f"Could not load settings: {e}")
 
@@ -627,11 +642,25 @@ class Backend(QObject):
                 'training_iterations': self._training_iterations,
                 'sample_rate': 5,
                 'max_frames': self._max_frames,
+                'last_dirs': self._last_dirs,
             }
             with open(self._settings_file, 'w') as f:
                 json.dump(settings, f, indent=2)
         except Exception as e:
             print(f"[WARN] Could not save settings: {e}")
+
+    def _get_last_dir(self, key: str, fallback: str = "") -> str:
+        """Get last-used directory for a dialog, with fallback."""
+        d = self._last_dirs.get(key, "")
+        if d and Path(d).is_dir():
+            return d
+        return fallback or str(Path.home())
+
+    def _set_last_dir(self, key: str, path: str):
+        """Remember the directory of a chosen file/folder for next time."""
+        p = Path(path)
+        self._last_dirs[key] = str(p.parent if p.is_file() else p)
+        self._save_settings()
 
     # ── Project helpers ──
 
