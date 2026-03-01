@@ -130,14 +130,18 @@ Item {
                 from: 80; to: 320
                 value: 160
                 stepSize: 16
-                implicitWidth: 100
+                live: true
                 Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 120
+                Layout.preferredHeight: 20
 
                 background: Rectangle {
                     x: sizeSlider.leftPadding
                     y: sizeSlider.topPadding + sizeSlider.availableHeight / 2 - height / 2
+                    implicitWidth: 120
+                    implicitHeight: 4
                     width: sizeSlider.availableWidth
-                    height: 3
+                    height: 4
                     radius: 2
                     color: Theme.border
 
@@ -152,8 +156,10 @@ Item {
                 handle: Rectangle {
                     x: sizeSlider.leftPadding + sizeSlider.visualPosition * (sizeSlider.availableWidth - width)
                     y: sizeSlider.topPadding + sizeSlider.availableHeight / 2 - height / 2
-                    width: 14; height: 14
-                    radius: 7
+                    implicitWidth: 16
+                    implicitHeight: 16
+                    width: 16; height: 16
+                    radius: 8
                     color: sizeSlider.pressed ? Theme.accent : Theme.text
                     border.color: Theme.border
                     border.width: 1
