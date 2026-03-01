@@ -398,6 +398,10 @@ class Backend(QObject):
             return
 
         proj_dir = Path(file_path)
+        # Sanitize: spaces in paths break nerfstudio/COLMAP shell commands
+        safe_name = proj_dir.name.replace(" ", "_")
+        if safe_name != proj_dir.name:
+            proj_dir = proj_dir.parent / safe_name
         # getSaveFileName returns a file-like path; we treat it as a dir
         proj_dir.mkdir(parents=True, exist_ok=True)
 
