@@ -187,8 +187,7 @@ Item {
         cellHeight: thumbSize + 4
         clip: true
         visible: images && images.length > 0
-        cacheBuffer: 600   // keep off-screen delegates alive to prevent flicker
-        reuseItems: true   // recycle delegates instead of destroying/creating
+        cacheBuffer: 600   // keep off-screen delegates alive
 
         model: images ? images.length : 0
 
@@ -216,20 +215,11 @@ Item {
                     anchors.margins: 1
                     source: images[index]
                     fillMode: root._qFillMode
-                    asynchronous: true
+                    asynchronous: false  // sync — thumbnails are small + cached
                     cache: true
                     smooth: true
                     sourceSize.width: grid.thumbSize * 2
                     sourceSize.height: grid.thumbSize * 2
-                }
-
-                // Loading placeholder
-                Rectangle {
-                    anchors.fill: parent
-                    color: Theme.border
-                    visible: thumbImg.status !== Image.Ready
-                    radius: Theme.radiusSm
-                    opacity: 0.5
                 }
             }
         }
