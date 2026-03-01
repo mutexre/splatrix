@@ -66,6 +66,16 @@
         const urlParams = new URLSearchParams(window.location.search);
         const plyPath   = urlParams.get('ply');
 
+        // Camera hint from PLY export (centroid + bounding radius)
+        const cx = parseFloat(urlParams.get('cx')) || 0;
+        const cy = parseFloat(urlParams.get('cy')) || 0;
+        const cz = parseFloat(urlParams.get('cz')) || 0;
+        const radius = parseFloat(urlParams.get('r')) || 5;
+
+        // Place camera at ~1.5x bounding radius, offset diagonally from centroid
+        const camDist = radius * 1.5;
+        const camPos = [cx + camDist * 0.7, cy - camDist * 0.5, cz + camDist * 0.7];
+
         if (!plyPath) {
             statusEl.textContent = 'No PLY loaded \u2014 run pipeline or open a project';
         } else {
@@ -75,8 +85,8 @@
                 const viewer = new GaussianSplats3D.Viewer({
                     'rootElement': container,
                     'cameraUp': [0, -1, 0],
-                    'initialCameraPosition': [0, -5, 10],
-                    'initialCameraLookAt': [0, 0, 0],
+                    'initialCameraPosition': camPos,
+                    'initialCameraLookAt': [cx, cy, cz],
                     'dynamicScene': false,
                     'sharedMemoryForWorkers': false,
                 });

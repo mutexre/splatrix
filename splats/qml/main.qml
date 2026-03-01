@@ -62,8 +62,9 @@ ApplicationWindow {
 
                 TabButton2 { iconName: "layers"; label: "Pipeline";      tabIndex: 0 }
                 TabButton2 { iconName: "video";  label: "Video Preview"; tabIndex: 1 }
-                TabButton2 { iconName: "box";    label: "3D Viewer";     tabIndex: 2 }
-                TabButton2 { iconName: "list";   label: "Log";           tabIndex: 3 }
+                TabButton2 { iconName: "grid";   label: "Frames";        tabIndex: 2 }
+                TabButton2 { iconName: "box";    label: "3D Viewer";     tabIndex: 3 }
+                TabButton2 { iconName: "list";   label: "Log";           tabIndex: 4 }
             }
 
             // Divider
@@ -134,6 +135,11 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             isActiveTab: tabStack.currentIndex === 1
+        }
+
+        FramesTab {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
         }
 
         ViewerTab {

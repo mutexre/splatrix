@@ -461,7 +461,7 @@ class NerfstudioWorker(QThread):
                 self.log.emit(f"[Export] {stage}")
             
             self.log.emit("Exporting Gaussian Splats to PLY...")
-            output_path = pipeline.export_gaussian_splat(
+            output_path, camera_hint = pipeline.export_gaussian_splat(
                 str(latest_checkpoint),
                 self.output_ply_path,
                 progress_callback=export_progress
@@ -473,6 +473,7 @@ class NerfstudioWorker(QThread):
                 'success': True,
                 'output_path': str(output_path),
                 'config_path': config_path,
+                'camera_hint': camera_hint,
                 'error': ''
             })
         

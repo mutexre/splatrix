@@ -205,6 +205,7 @@ Item {
                         status: s ? s.status : "pending"
                         progress: s ? s.progress : 0.0
                         detail: s ? s.detail : ""
+                        eta: s ? (s.eta || "") : ""
 
                         // Play enabled when: has video, not processing, and
                         // all prior stages are completed (or this is stage 0)

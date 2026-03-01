@@ -2,7 +2,9 @@
 
 import json
 import re
+import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +56,7 @@ class Backend(QObject):
     windowTitleChanged = pyqtSignal()
     projectNameChanged = pyqtSignal()
     viewerUrlChanged = pyqtSignal()
+    frameImagesChanged = pyqtSignal()
 
     def __init__(self, controller=None, parent=None):
         super().__init__(parent)
@@ -67,8 +70,11 @@ class Backend(QObject):
         self._status_text = "Ready"
         self._log_lines: list[str] = []
         self._viewer_url = ""
+        self._camera_hint: Optional[dict] = None
+        self._frame_images: list[str] = []  # list of file:// URLs for extracted frames
 
-        # Stage state
+        # Stage state — with ETA tracking
+        self._stage_start_times: dict[str, float] = {}  # key → time.time()
         self._stages: list[dict] = [
             {"key": key, "label": label, "status": "pending", "progress": 0.0, "detail": ""}
             for key, label in STAGE_DEFS
@@ -189,6 +195,10 @@ class Backend(QObject):
         if self._viewer_url:
             return QUrl(self._viewer_url)
         return QUrl.fromLocalFile(str(self._viewer_html))
+
+    @pyqtProperty("QVariantList", notify=frameImagesChanged)
+    def frameImages(self):
+        return self._frame_images
 
     # ══════════════════════════════════════════════════════════════════════════
     #  QML Slots (actions)
@@ -514,6 +524,13 @@ class Backend(QObject):
         if idx < 0:
             return
         stage = self._stages[idx]
+
+        # ETA tracking
+        if status == "running" and key not in self._stage_start_times:
+            self._stage_start_times[key] = time.time()
+        elif status in ("completed", "failed", "cancelled", "pending"):
+            self._stage_start_times.pop(key, None)
+
         stage["status"] = status
         if detail:
             stage["detail"] = detail
@@ -523,11 +540,54 @@ class Backend(QObject):
             stage["progress"] = 1.0
         elif status == "pending":
             stage["progress"] = 0.0
+
+        # Compute ETA for running stages
+        if status == "running" and progress > 0.01:
+            started = self._stage_start_times.get(key)
+            if started:
+                elapsed = time.time() - started
+                eta_s = (elapsed / progress) * (1.0 - progress)
+                stage["eta"] = self._format_eta(eta_s)
+            else:
+                stage["eta"] = ""
+        else:
+            stage["eta"] = ""
+
         self.stagesChanged.emit()
+
+    @staticmethod
+    def _format_eta(seconds: float) -> str:
+        if seconds < 0 or seconds > 86400:
+            return ""
+        m, s = divmod(int(seconds), 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"~{h}h {m}m left"
+        elif m > 0:
+            return f"~{m}m {s}s left"
+        else:
+            return f"~{s}s left"
 
     def _update_button_states(self):
         self.isProcessingChanged.emit()
         self.canExportPlyChanged.emit()
+
+    def _scan_frame_images(self, frames_dir: str = None):
+        """Scan extracted frames directory and populate frameImages list."""
+        images = []
+        search_dir = frames_dir or self._stage_paths.get('frames')
+        if search_dir:
+            d = Path(search_dir)
+            if d.is_dir():
+                exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
+                files = sorted(
+                    [f for f in d.iterdir() if f.suffix.lower() in exts],
+                    key=lambda f: f.name
+                )
+                images = [QUrl.fromLocalFile(str(f)).toString() for f in files]
+        if images != self._frame_images:
+            self._frame_images = images
+            self.frameImagesChanged.emit()
 
     def _set_data_stage_paths(self, ws_data: Path):
         """Set all data-stage folder paths from the nerfstudio data directory."""
@@ -535,6 +595,7 @@ class Backend(QObject):
         self._stage_paths['feature_extract'] = str(ws_data / "colmap")
         self._stage_paths['feature_match'] = str(ws_data / "colmap")
         self._stage_paths['reconstruction'] = str(ws_data)
+        self._scan_frame_images()
 
     def _current_settings(self) -> dict:
         return {
@@ -663,6 +724,9 @@ class Backend(QObject):
                     if path_val:
                         self._stage_paths[key] = path_val
 
+            # Scan extracted frames
+            self._scan_frame_images()
+
             # Load PLY if available
             ply = self._project.get_export_ply()
             if ply and Path(ply).exists():
@@ -682,15 +746,21 @@ class Backend(QObject):
             self._project.save_project()
             self._save_settings()  # persist last_project_dir
 
-    def _load_ply_in_viewer(self, ply_path: str):
+    def _load_ply_in_viewer(self, ply_path: str, camera_hint: dict = None):
         try:
             ply = Path(ply_path).resolve()
             if not ply.exists():
                 self._log(f"PLY file not found: {ply}")
                 return
             url = QUrl.fromLocalFile(str(self._viewer_html))
-            url.setQuery(f"ply=file://{ply}")
+            query = f"ply=file://{ply}"
+            if camera_hint:
+                c = camera_hint.get("centroid", [0, 0, 0])
+                r = camera_hint.get("radius", 5)
+                query += f"&cx={c[0]:.3f}&cy={c[1]:.3f}&cz={c[2]:.3f}&r={r:.3f}"
+            url.setQuery(query)
             self._viewer_url = url.toString()
+            self._camera_hint = camera_hint  # save for re-use
             self.viewerUrlChanged.emit()
             self._log(f"Loaded PLY in viewer: {ply.name}")
         except Exception as e:
@@ -884,7 +954,8 @@ class Backend(QObject):
             self.projectNameChanged.emit()
             self.projectDirChanged.emit()
 
-            self._load_ply_in_viewer(output_path)
+            camera_hint = result.get('camera_hint')
+            self._load_ply_in_viewer(output_path, camera_hint=camera_hint)
         else:
             self._log(f"Pipeline failed: {result['error']}")
             self._set_status("Pipeline failed")

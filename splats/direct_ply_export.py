@@ -101,7 +101,18 @@ def export_from_checkpoint(
 
     print(f"✓ Exported {len(positions_np)} Gaussians to {output_path}")
 
-    return output_path
+    # Compute camera hint (centroid + bounding sphere radius)
+    centroid = positions_np.mean(axis=0)
+    dists = np.linalg.norm(positions_np - centroid, axis=1)
+    # Use 90th percentile radius to ignore outliers
+    radius = float(np.percentile(dists, 90))
+
+    camera_hint = {
+        "centroid": centroid.tolist(),
+        "radius": radius,
+    }
+
+    return output_path, camera_hint
 
 
 def find_latest_checkpoint(output_dir: Path) -> Optional[Path]:

@@ -11,6 +11,7 @@ Rectangle {
     property string status: "pending"    // pending | running | completed | failed | cancelled
     property real   progress: 0.0        // 0..1
     property string detail: ""
+    property string eta: ""         // estimated time remaining
 
     property bool canPlay: false    // controlled by parent
     signal openFolderClicked(string key)
@@ -115,6 +116,14 @@ Rectangle {
                 color: _statusColor()
                 font.pixelSize: Theme.fontSizeXs
                 visible: root.status !== "completed"
+            }
+
+            // ETA label (shown only during running with valid ETA)
+            Text {
+                text: root.eta
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSizeXs
+                visible: root.status === "running" && root.eta !== ""
             }
 
             // Play button (start from this stage)
