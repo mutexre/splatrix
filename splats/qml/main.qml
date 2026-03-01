@@ -129,6 +129,7 @@ ApplicationWindow {
         PipelineTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            onSwitchToTab: function(idx) { tabStack.currentIndex = idx }
         }
 
         VideoTab {

@@ -6,6 +6,8 @@ import QtQuick.Controls
 Item {
     id: root
 
+    signal switchToTab(int tabIndex)
+
     // ── Scrollable content ──────────────────────────────────────
     Flickable {
         id: flick
@@ -225,7 +227,11 @@ Item {
                             if (backend) backend.startFromStage(key)
                         }
                         onOpenFolderClicked: function(key) {
-                            if (backend) backend.openStageFolder(key)
+                            if (key === "frames") {
+                                root.switchToTab(2)  // Frames tab
+                            } else if (backend) {
+                                backend.openStageFolder(key)
+                            }
                         }
                     }
                 }
