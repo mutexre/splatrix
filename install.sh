@@ -2,25 +2,25 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════════
-#  Splats Installer — zero-dependency, single-command install
+#  Splatrix Installer — zero-dependency, single-command install
 #
 #  Usage:
-#    curl -fsSL https://splats-app.github.io/splats/install.sh | bash
+#    curl -fsSL https://splatrix.github.io/splatrix/install.sh | bash
 #
 #  What this does:
 #    1. Installs micromamba (~5 MB static binary)
-#    2. Downloads Splats source
+#    2. Downloads Splatrix source
 #    3. Creates environment with all dependencies
-#    4. Installs the 'splats' command
+#    4. Installs the 'splatrix' command
 #
 #  Requirements: Linux x86_64 with NVIDIA GPU + drivers installed
 # ══════════════════════════════════════════════════════════════════
 
-SPLATS_VERSION="${SPLATS_VERSION:-main}"
-SPLATS_REPO="https://github.com/splats-app/splats"
-SPLATS_HOME="${SPLATS_HOME:-$HOME/.splats}"
+SPLATRIX_VERSION="${SPLATRIX_VERSION:-main}"
+SPLATRIX_REPO="https://github.com/splatrix/splatrix"
+SPLATRIX_HOME="${SPLATRIX_HOME:-$HOME/.splatrix}"
 MAMBA_ROOT="${MAMBA_ROOT_PREFIX:-$HOME/.local/share/micromamba}"
-ENV_NAME="splats"
+ENV_NAME="splatrix"
 PYTHON_VERSION="3.10"
 CUDA_VERSION="12.1"
 LAUNCHER_DIR="$HOME/.local/bin"
@@ -39,8 +39,8 @@ step()  { echo -e "\n${BOLD}── $* ──${NC}"; }
 
 step "Preflight checks"
 
-[[ "$(uname -s)" == "Linux" ]] || fail "Splats currently supports Linux only."
-[[ "$(uname -m)" == "x86_64" ]] || fail "Splats requires x86_64 architecture."
+[[ "$(uname -s)" == "Linux" ]] || fail "Splatrix currently supports Linux only."
+[[ "$(uname -m)" == "x86_64" ]] || fail "Splatrix requires x86_64 architecture."
 
 # Download tool
 if command -v curl >/dev/null 2>&1; then
@@ -82,26 +82,26 @@ fi
 export MAMBA_ROOT_PREFIX="$MAMBA_ROOT"
 eval "$("$MAMBA_EXE" shell hook -s bash)"
 
-# ── Download Splats ───────────────────────────────────────────────
+# ── Download Splatrix ───────────────────────────────────────────────
 
-step "Download Splats"
+step "Download Splatrix"
 
-mkdir -p "$SPLATS_HOME"
+mkdir -p "$SPLATRIX_HOME"
 
-if [[ -d "$SPLATS_HOME/src/.git" ]]; then
+if [[ -d "$SPLATRIX_HOME/src/.git" ]]; then
     info "Updating existing installation..."
-    cd "$SPLATS_HOME/src"
+    cd "$SPLATRIX_HOME/src"
     command -v git >/dev/null 2>&1 && git pull --quiet 2>/dev/null || true
 else
-    info "Downloading Splats ${SPLATS_VERSION}..."
-    rm -rf "$SPLATS_HOME/src"
-    mkdir -p "$SPLATS_HOME/src"
-    $DL "${SPLATS_REPO}/archive/refs/heads/${SPLATS_VERSION}.tar.gz" \
-        | tar xz -C "$SPLATS_HOME/src" --strip-components=1
+    info "Downloading Splatrix ${SPLATRIX_VERSION}..."
+    rm -rf "$SPLATRIX_HOME/src"
+    mkdir -p "$SPLATRIX_HOME/src"
+    $DL "${SPLATRIX_REPO}/archive/refs/heads/${SPLATRIX_VERSION}.tar.gz" \
+        | tar xz -C "$SPLATRIX_HOME/src" --strip-components=1
     ok "Downloaded source"
 fi
 
-cd "$SPLATS_HOME/src"
+cd "$SPLATRIX_HOME/src"
 
 # ── Environment ───────────────────────────────────────────────────
 
@@ -135,17 +135,17 @@ info "Installing Nerfstudio... (this may take a few minutes)"
 pip install nerfstudio -q 2>/dev/null
 ok "Nerfstudio installed"
 
-info "Installing Splats..."
+info "Installing Splatrix..."
 pip install -e . -q 2>/dev/null
-ok "Splats installed"
+ok "Splatrix installed"
 
 # ── Launcher ──────────────────────────────────────────────────────
 
 step "Create launcher"
 
-cat > "$LAUNCHER_DIR/splats" << LAUNCHER_EOF
+cat > "$LAUNCHER_DIR/splatrix" << LAUNCHER_EOF
 #!/usr/bin/env bash
-# Splats launcher — auto-activates environment via micromamba
+# Splatrix launcher — auto-activates environment via micromamba
 
 export MAMBA_ROOT_PREFIX="${MAMBA_ROOT}"
 MAMBA_EXE="${MAMBA_EXE}"
@@ -153,15 +153,15 @@ MAMBA_EXE="${MAMBA_EXE}"
 [[ -f "\$MAMBA_EXE" ]] || { echo "Error: micromamba not found at \$MAMBA_EXE"; exit 1; }
 
 eval "\$("\$MAMBA_EXE" shell hook -s bash)"
-micromamba activate splats 2>/dev/null || { echo "Error: 'splats' env not found. Run the installer."; exit 1; }
+micromamba activate splatrix 2>/dev/null || { echo "Error: 'splatrix' env not found. Run the installer."; exit 1; }
 
 [[ -n "\${CONDA_PREFIX:-}" ]] && export LD_LIBRARY_PATH="\${CONDA_PREFIX}/lib:\${LD_LIBRARY_PATH:-}"
 
-exec python -m splats.main_qml "\$@"
+exec python -m splatrix.main_qml "\$@"
 LAUNCHER_EOF
 
-chmod +x "$LAUNCHER_DIR/splats"
-ok "Launcher created: ${LAUNCHER_DIR}/splats"
+chmod +x "$LAUNCHER_DIR/splatrix"
+ok "Launcher created: ${LAUNCHER_DIR}/splatrix"
 
 # ── PATH setup ────────────────────────────────────────────────────
 
@@ -201,9 +201,9 @@ python -c "from PyQt6.QtWidgets import QApplication; print('  PyQt6 OK')" 2>/dev
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   ${BOLD}Splats installed successfully!${NC}${GREEN}                     ║${NC}"
+echo -e "${GREEN}║   ${BOLD}Splatrix installed successfully!${NC}${GREEN}                     ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   Run:  ${CYAN}splats${NC}${GREEN}                                       ║${NC}"
+echo -e "${GREEN}║   Run:  ${CYAN}splatrix${NC}${GREEN}                                       ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""

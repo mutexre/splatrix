@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launcher script for QML-based Video to Gaussian Splats Converter"""
+"""Launcher script for QML-based Splatrix"""
 
 import os
 import sys
@@ -12,7 +12,7 @@ if conda_prefix:
     if cuda_lib_path not in ld_library_path:
         os.environ['LD_LIBRARY_PATH'] = f"{cuda_lib_path}:{ld_library_path}"
 
-from splats.main_qml import main
+from splatrix.main_qml import main
 
 if __name__ == "__main__":
     main()

@@ -19,7 +19,7 @@ import yaml
 # Stage definitions in pipeline order
 STAGE_ORDER = ['frames', 'feature_extract', 'feature_match', 'reconstruction', 'training', 'export']
 
-SETTINGS_DIR = Path.home() / ".splats_workspace"
+SETTINGS_DIR = Path.home() / ".splatrix"
 RECENT_PROJECTS_FILE = SETTINGS_DIR / "recent_projects.json"
 MAX_RECENT = 10
 

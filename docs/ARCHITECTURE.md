@@ -1,4 +1,4 @@
-# Splats Application Architecture
+# Splatrix Application Architecture
 
 ## Overview
 
@@ -9,21 +9,21 @@ Video → Gaussian Splats PLY conversion pipeline with PyQt6 UI.
 ### 1. Frame Extraction
 - **Implementation**: ffmpeg subprocess (launched by nerfstudio)
 - **Location**: `nerfstudio.process_data.video_to_nerfstudio_dataset.VideoToNerfstudioDataset`
-- **Output**: `~/.splats_workspace/nerfstudio/nerfstudio_data/images/`
+- **Output**: `~/.splatrix/nerfstudio/nerfstudio_data/images/`
 
 ### 2. COLMAP / Structure from Motion
 - **Implementation**: pycolmap Python API via custom wrapper
-- **Wrapper**: `/path/to/conda/envs/splats/bin/colmap` (Python script)
+- **Wrapper**: `/path/to/conda/envs/splatrix/bin/colmap` (Python script)
 - **Stages**:
   - Feature extraction: `pycolmap.extract_features()`
   - Feature matching: `pycolmap.match_*()` 
   - Sparse reconstruction: `pycolmap.incremental_mapping()`
-- **Output**: `~/.splats_workspace/nerfstudio/nerfstudio_data/colmap/sparse/0/`
+- **Output**: `~/.splatrix/nerfstudio/nerfstudio_data/colmap/sparse/0/`
 
 ### 3. Training (Splatfacto)
 - **Implementation**: nerfstudio Python API (pure Python, no subprocess)
 - **Module**: `nerfstudio.engine.trainer.Trainer`
-- **Output**: `~/.splats_workspace/nerfstudio/outputs/unnamed/splatfacto/{timestamp}/`
+- **Output**: `~/.splatrix/nerfstudio/outputs/unnamed/splatfacto/{timestamp}/`
 
 ### 4. Export
 - **Implementation**: ns-export CLI (subprocess)
@@ -194,9 +194,9 @@ elif "Export" in stage:
 
 ## Configuration
 
-**Workspace**: `~/.splats_workspace/`
+**Workspace**: `~/.splatrix/`
 ```
-.splats_workspace/
+.splatrix/
   ├── settings.json          # UI settings (last video, etc)
   └── nerfstudio/
       ├── nerfstudio_data/   # Processed data

@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "splats"
+name = "splatrix"
 version = "0.1.0"
 description = "Convert video files to 3D Gaussian Splats"
 readme = "README.md"
@@ -47,19 +47,19 @@ dev = [
 ]
 
 [project.scripts]
-splats = "splats.main_qml:main"
+splatrix = "splatrix.main_qml:main"
 
 [project.urls]
-Homepage = "https://github.com/splats-app/splats"
-Documentation = "https://splats-app.github.io/splats"
-Repository = "https://github.com/splats-app/splats"
-Issues = "https://github.com/splats-app/splats/issues"
+Homepage = "https://github.com/splatrix/splatrix"
+Documentation = "https://splatrix.github.io/splatrix"
+Repository = "https://github.com/splatrix/splatrix"
+Issues = "https://github.com/splatrix/splatrix/issues"
 
 [tool.setuptools.packages.find]
-include = ["splats*"]
+include = ["splatrix*"]
 
 [tool.setuptools.package-data]
-splats = [
+splatrix = [
     "qml/*.qml",
     "qml/qmldir",
     "qml/fonts/*.ttf",

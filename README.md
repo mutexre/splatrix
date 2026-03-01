@@ -1,8 +1,8 @@
-# Splats
+# Splatrix
 
 **Convert any video into 3D Gaussian Splats — one click.**
 
-Splats is a desktop application that takes a video file and produces a 3D Gaussian Splat in PLY format. It wraps the [Nerfstudio](https://docs.nerf.studio/) pipeline behind an intuitive QML interface with real-time progress tracking, an embedded 3D viewer, and project persistence.
+Splatrix is a desktop application that takes a video file and produces a 3D Gaussian Splat in PLY format. It wraps the [Nerfstudio](https://docs.nerf.studio/) pipeline behind an intuitive QML interface with real-time progress tracking, an embedded 3D viewer, and project persistence.
 
 ## Features
 
@@ -30,21 +30,21 @@ Splats is a desktop application that takes a video file and produces a 3D Gaussi
 One command, no prerequisites (just Linux x86_64 + NVIDIA drivers):
 
 ```bash
-curl -fsSL https://splats-app.github.io/splats/install.sh | bash
+curl -fsSL https://splatrix.github.io/splatrix/install.sh | bash
 ```
 
-This automatically installs Miniconda (if needed), PyTorch, COLMAP, FFmpeg, Nerfstudio, and the Splats app.
+This automatically installs micromamba, PyTorch, COLMAP, FFmpeg, Nerfstudio, and Splatrix.
 
 ## Run
 
 ```bash
-splats
+splatrix
 ```
 
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/splats-app/splats/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/splatrix/splatrix/main/uninstall.sh | bash
 ```
 
 ## Usage
@@ -67,8 +67,8 @@ curl -fsSL https://raw.githubusercontent.com/splats-app/splats/main/uninstall.sh
 ## Project Structure
 
 ```
-splats/
-├── splats/               # Python package
+splatrix/
+├── splatrix/             # Python package
 │   ├── main_qml.py       # Application entry point
 │   ├── qml_bridge.py     # Python ↔ QML bridge
 │   ├── app_controller.py # Multi-window management
@@ -89,7 +89,7 @@ splats/
 
 ```bash
 # Install in development mode
-conda activate splats
+conda activate splatrix
 pip install -e ".[dev]"
 
 # Run directly

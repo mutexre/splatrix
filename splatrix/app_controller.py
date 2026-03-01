@@ -11,9 +11,9 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 
 # Where we persist session state
-SETTINGS_DIR = Path.home() / ".splats_workspace"
+SETTINGS_DIR = Path.home() / ".splatrix"
 SESSION_FILE = SETTINGS_DIR / "session.json"
-PROJECTS_FOLDER_NAME = "SplatsProjects"
+PROJECTS_FOLDER_NAME = "SplatrixProjects"
 
 
 class AppController(QObject):
@@ -72,7 +72,7 @@ class AppController(QObject):
             None,
             "Projects Folder",
             f"Cannot use default location:\n{default_path}\n\n"
-            "Please choose where to store Splats projects.",
+            "Please choose where to store Splatrix projects.",
         )
         chosen = QFileDialog.getExistingDirectory(
             None, "Choose Projects Root Folder", str(docs)

@@ -1,7 +1,7 @@
-"""QML-based application entry point for Video to Gaussian Splats Converter.
+"""QML-based application entry point for Splatrix.
 
 Startup sequence:
-1. Ensure "Splats Projects" folder exists in ~/Documents
+1. Ensure "SplatrixProjects" folder exists in ~/Documents
 2. Restore last session (reopen previously open projects)
 3. If no session to restore, open one empty window
 """

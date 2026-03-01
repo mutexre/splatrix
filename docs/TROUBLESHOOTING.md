@@ -107,14 +107,14 @@ If COLMAP consistently fails:
 ### Quick Fix Script
 ```bash
 # If you encounter library conflicts again
-cd /home/alexander.obuschenko/Projects/splats
-conda activate splats
+cd /home/alexander.obuschenko/Projects/splatrix
+conda activate splatrix
 conda remove qt-main harfbuzz pango --force -y
 ```
 
 ### Verify Installation
 ```bash
-conda activate splats
+conda activate splatrix
 
 # Check PyQt6
 python -c "from PyQt6.QtWidgets import QApplication; print('✓ PyQt6 OK')"
@@ -136,9 +136,9 @@ colmap -h | head -1
 ```bash
 # If environment is corrupted
 conda deactivate
-conda env remove -n splats
-conda create -n splats python=3.10 -y
-conda activate splats
+conda env remove -n splatrix
+conda create -n splatrix python=3.10 -y
+conda activate splatrix
 
 # Install in this order
 conda install -c conda-forge ffmpeg colmap=3.8 -y
@@ -163,10 +163,10 @@ conda remove harfbuzz qt-main --force -y
 ### Nerfstudio Commands Not Found
 ```bash
 # Verify nerfstudio installation
-conda activate splats
+conda activate splatrix
 which ns-train
 
-# Should show: /home/alexander.obuschenko/miniconda3/envs/splats/bin/ns-train
+# Should show: /home/alexander.obuschenko/miniconda3/envs/splatrix/bin/ns-train
 ```
 
 ### GPU Not Detected

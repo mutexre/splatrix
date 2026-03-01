@@ -22,18 +22,18 @@ from .project_manager import ProjectManager
 
 
 class MainWindow(QMainWindow):
-    """Main application window for video to Gaussian Splats conversion"""
+    """Main application window for Splatrix"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Video to Gaussian Splats Converter")
+        self.setWindowTitle("Splatrix Converter")
         self.setMinimumSize(800, 600)
         
         # State
         self.video_path: Optional[str] = None
         self.frame_paths: list[str] = []
         self.splat_data: Optional[dict] = None
-        self.workspace_dir: Path = Path.home() / ".splats_workspace"
+        self.workspace_dir: Path = Path.home() / ".splatrix"
         self.workspace_dir.mkdir(exist_ok=True)
         self.settings_file: Path = self.workspace_dir / "settings.json"
         
@@ -1121,7 +1121,7 @@ class MainWindow(QMainWindow):
             self.project.update_stage('export', 'completed', ply_path=output_path)
             if not self.project.project_path:
                 # Auto-create project file next to video or in workspace
-                stem = Path(self.video_path).stem if self.video_path else "splats"
+                stem = Path(self.video_path).stem if self.video_path else "splatrix"
                 auto_path = self.workspace_dir / f"{stem}.splatproj"
                 self.project.save_project(str(auto_path))
                 self._log(f"✓ Project auto-saved: {auto_path.name}")
@@ -1182,7 +1182,7 @@ class MainWindow(QMainWindow):
     def _on_save_project_as(self):
         """Save project with new path"""
         # Suggest name from video filename
-        suggested = str(Path.home() / "splats_project.splatproj")
+        suggested = str(Path.home() / "splatrix_project.splatproj")
         if self.video_path:
             stem = Path(self.video_path).stem
             suggested = str(Path.home() / f"{stem}.splatproj")
@@ -1302,9 +1302,9 @@ class MainWindow(QMainWindow):
     def _update_title(self):
         """Update window title with project name"""
         if self.project.project_path:
-            self.setWindowTitle(f"Video to Gaussian Splats - {self.project.project_name}")
+            self.setWindowTitle(f"Splatrix - {self.project.project_name}")
         else:
-            self.setWindowTitle("Video to Gaussian Splats Converter")
+            self.setWindowTitle("Splatrix Converter")
 
     def _update_recent_menu(self):
         """Populate Recent Projects submenu"""

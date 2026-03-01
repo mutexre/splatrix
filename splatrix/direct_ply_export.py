@@ -109,7 +109,7 @@ def find_latest_checkpoint(output_dir: Path) -> Optional[Path]:
     Find the latest checkpoint in nerfstudio output directory
 
     Args:
-        output_dir: Base output directory (e.g., ~/.splats_workspace/nerfstudio/outputs)
+        output_dir: Base output directory (e.g., ~/.splatrix/nerfstudio/outputs)
 
     Returns:
         Path to latest checkpoint .ckpt file, or None if not found

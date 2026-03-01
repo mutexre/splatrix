@@ -82,7 +82,7 @@ class Backend(QObject):
         self._stage_paths: dict[str, Optional[str]] = {k: None for k, _ in STAGE_DEFS}
 
         # Workspace
-        self._workspace = Path.home() / ".splats_workspace"
+        self._workspace = Path.home() / ".splatrix"
         self._workspace.mkdir(exist_ok=True)
         self._settings_file = self._workspace / "settings.json"
 
@@ -183,8 +183,8 @@ class Backend(QObject):
     @pyqtProperty(str, notify=windowTitleChanged)
     def windowTitle(self):
         if self._project.project_path:
-            return f"Video to Gaussian Splats — {self._project.project_name}"
-        return "Video to Gaussian Splats Converter"
+            return f"Splatrix — {self._project.project_name}"
+        return "Splatrix"
 
     @pyqtProperty(str, notify=projectNameChanged)
     def projectName(self):
@@ -445,7 +445,7 @@ class Backend(QObject):
         already has a project, a new window is spawned instead."""
         start = str(self._controller.projects_root) if self._controller and self._controller.projects_root else str(Path.home())
         file_path, _ = QFileDialog.getSaveFileName(
-            None, "Create New Project", start, "Splats Project Folder (*)"
+            None, "Create New Project", start, "Splatrix Project Folder (*)"
         )
         if not file_path:
             return
@@ -660,7 +660,7 @@ class Backend(QObject):
         """Auto-create a project dir from video name if not set."""
         if self._project.project_dir:
             return
-        stem = Path(self._video_path).stem if self._video_path else "splats_project"
+        stem = Path(self._video_path).stem if self._video_path else "splatrix_project"
         proj_dir = self._workspace / stem
         proj_dir.mkdir(parents=True, exist_ok=True)
         if not self._project.is_open:

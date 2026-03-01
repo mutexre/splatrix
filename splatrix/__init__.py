@@ -1,4 +1,4 @@
-"""Video to Gaussian Splats Converter"""
+"""Splatrix — Video to 3D Gaussian Splats"""
 
 __version__ = "0.1.0"
 

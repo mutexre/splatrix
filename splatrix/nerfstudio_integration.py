@@ -1,4 +1,4 @@
-"""Nerfstudio integration for video to Gaussian Splats conversion - Python API"""
+"""Nerfstudio integration for Splatrix - Python API"""
 
 from pathlib import Path
 from typing import Optional, Callable, Literal
@@ -266,7 +266,7 @@ class NerfstudioPipeline:
         # Set timestamp and experiment name directly (methods take no arguments)
         from datetime import datetime
         config.timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        config.experiment_name = "video_to_splats"
+        config.experiment_name = "splatrix"
         
         # Pre-create output directory structure
         # Trainer expects parent directories to exist

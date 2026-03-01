@@ -10,7 +10,7 @@ ApplicationWindow {
     height: 720
     minimumWidth: 800
     minimumHeight: 600
-    title: backend ? backend.windowTitle : "Video to Gaussian Splats"
+    title: backend ? backend.windowTitle : "Splatrix"
     color: Theme.bg
 
     onClosing: function(close) {

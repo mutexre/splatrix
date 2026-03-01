@@ -34,7 +34,7 @@ env/
 *~
 
 # Project specific
-.splats_workspace/
+.splatrix/
 outputs/
 *.ply
 
@@ -49,3 +49,4 @@ website/dist/
 # Web prototype (dev only)
 web/node_modules/
 web/dist/
+.mypy_cache/

@@ -1,4 +1,4 @@
-# Splats project - AI Assistant Rules
+# Splatrix project - AI Assistant Rules
 
 ## Communication Style
 **MANDATORY**: Use concise military-style communication throughout all sessions.
@@ -73,8 +73,8 @@ Examples:
 - **PyQt6** for UI (migration to QML planned)
 - **pyqtgraph** for real-time plotting
 - **asyncio** for async operations
-- **Conda** environment: `splats`
-- ** Everything else which is required for splats
+- **Conda** environment: `splatrix`
+- ** Everything else which is required for splatrix
 
 ## Coding Patterns
 
@@ -125,9 +125,9 @@ Examples:
 
 ### Run UI
 ```bash
-conda activate splats
-cd /home/alexander.obuschenko/Projects/splats
-python -m splats.main_window
+conda activate splatrix
+cd /home/alexander.obuschenko/Projects/splatrix
+python -m splatrix.main_qml
 # or
 python run.py
 ```
