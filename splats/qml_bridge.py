@@ -746,21 +746,81 @@ class Backend(QObject):
             self._project.save_project()
             self._save_settings()  # persist last_project_dir
 
+    def _compute_camera_hint(self) -> dict:
+        """Compute optimal camera position from COLMAP transforms.json."""
+        try:
+            import numpy as np
+            # Find transforms.json from reconstruction stage
+            recon_path = self._stage_paths.get('reconstruction')
+            if not recon_path:
+                return {}
+            transforms_file = Path(recon_path) / "transforms.json"
+            if not transforms_file.exists():
+                return {}
+
+            with open(transforms_file) as f:
+                data = json.load(f)
+
+            frames = data.get('frames', [])
+            if not frames:
+                return {}
+
+            # Extract camera positions from 4x4 transform matrices
+            cam_positions = []
+            for frame in frames:
+                m = frame.get('transform_matrix')
+                if m and len(m) >= 3:
+                    cam_positions.append([m[0][3], m[1][3], m[2][3]])
+
+            if not cam_positions:
+                return {}
+
+            positions = np.array(cam_positions)
+            centroid = positions.mean(axis=0)
+
+            # Scene center is at origin (nerfstudio normalizes)
+            scene_center = [0.0, 0.0, 0.0]
+
+            # Pick a representative camera: closest to median distance from centroid
+            dists = np.linalg.norm(positions - centroid, axis=1)
+            median_idx = np.argsort(dists)[len(dists) // 2]
+            representative_cam = positions[median_idx]
+
+            # Camera orbit radius (median distance from scene center)
+            orbit_radius = float(np.median(np.linalg.norm(positions, axis=1)))
+
+            return {
+                "centroid": scene_center,
+                "radius": orbit_radius,
+                "camera_pos": representative_cam.tolist(),
+            }
+        except Exception as e:
+            self._log(f"Camera hint computation failed: {e}")
+            return {}
+
     def _load_ply_in_viewer(self, ply_path: str, camera_hint: dict = None):
         try:
             ply = Path(ply_path).resolve()
             if not ply.exists():
                 self._log(f"PLY file not found: {ply}")
                 return
+
+            # Auto-compute camera from COLMAP data if not provided
+            if not camera_hint:
+                camera_hint = self._compute_camera_hint()
+
             url = QUrl.fromLocalFile(str(self._viewer_html))
             query = f"ply=file://{ply}"
             if camera_hint:
                 c = camera_hint.get("centroid", [0, 0, 0])
                 r = camera_hint.get("radius", 5)
                 query += f"&cx={c[0]:.3f}&cy={c[1]:.3f}&cz={c[2]:.3f}&r={r:.3f}"
+                cam = camera_hint.get("camera_pos")
+                if cam:
+                    query += f"&px={cam[0]:.3f}&py={cam[1]:.3f}&pz={cam[2]:.3f}"
             url.setQuery(query)
             self._viewer_url = url.toString()
-            self._camera_hint = camera_hint  # save for re-use
+            self._camera_hint = camera_hint
             self.viewerUrlChanged.emit()
             self._log(f"Loaded PLY in viewer: {ply.name}")
         except Exception as e:
@@ -954,8 +1014,7 @@ class Backend(QObject):
             self.projectNameChanged.emit()
             self.projectDirChanged.emit()
 
-            camera_hint = result.get('camera_hint')
-            self._load_ply_in_viewer(output_path, camera_hint=camera_hint)
+            self._load_ply_in_viewer(output_path)
         else:
             self._log(f"Pipeline failed: {result['error']}")
             self._set_status("Pipeline failed")

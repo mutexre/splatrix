@@ -66,15 +66,17 @@
         const urlParams = new URLSearchParams(window.location.search);
         const plyPath   = urlParams.get('ply');
 
-        // Camera hint from PLY export (centroid + bounding radius)
+        // Camera hint from COLMAP reconstruction data
         const cx = parseFloat(urlParams.get('cx')) || 0;
         const cy = parseFloat(urlParams.get('cy')) || 0;
         const cz = parseFloat(urlParams.get('cz')) || 0;
         const radius = parseFloat(urlParams.get('r')) || 5;
 
-        // Place camera at ~1.5x bounding radius, offset diagonally from centroid
-        const camDist = radius * 1.5;
-        const camPos = [cx + camDist * 0.7, cy - camDist * 0.5, cz + camDist * 0.7];
+        // Use explicit camera position from COLMAP if provided, else fallback
+        const hasCamPos = urlParams.has('px');
+        const camPos = hasCamPos
+            ? [parseFloat(urlParams.get('px')), parseFloat(urlParams.get('py')), parseFloat(urlParams.get('pz'))]
+            : [cx + radius * 1.05, cy - radius * 0.5, cz + radius * 1.05];
 
         if (!plyPath) {
             statusEl.textContent = 'No PLY loaded \u2014 run pipeline or open a project';

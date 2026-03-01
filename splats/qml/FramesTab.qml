@@ -7,6 +7,7 @@ Item {
     id: root
 
     property var images: backend ? backend.frameImages : []
+    property int fitMode: 0  // 0=Fit, 1=Fill, 2=Stretch
 
     Rectangle {
         anchors.fill: parent
@@ -42,7 +43,7 @@ Item {
         }
     }
 
-    // Header with frame count
+    // Header with frame count and controls
     Rectangle {
         id: headerBar
         anchors.top: parent.top
@@ -63,6 +64,7 @@ Item {
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 16
+            spacing: 12
 
             Icon {
                 name: "grid"
@@ -79,6 +81,43 @@ Item {
 
             Item { Layout.fillWidth: true }
 
+            // Fit mode selector
+            Row {
+                spacing: 2
+
+                Repeater {
+                    model: ["Fit", "Fill", "Stretch"]
+                    Rectangle {
+                        width: label.implicitWidth + 16
+                        height: 24
+                        radius: Theme.radiusSm
+                        color: root.fitMode === index
+                               ? Qt.rgba(0.39, 0.40, 0.95, 0.15)
+                               : fitMa.containsMouse ? Theme.surfaceHover : "transparent"
+
+                        Text {
+                            id: label
+                            anchors.centerIn: parent
+                            text: modelData
+                            color: root.fitMode === index ? Theme.accent : Theme.textMuted
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+
+                        MouseArea {
+                            id: fitMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.fitMode = index
+                        }
+                    }
+                }
+            }
+
+            // Separator
+            Rectangle { width: 1; height: 20; color: Theme.borderSubtle }
+
             // Size slider
             Text {
                 text: "Size"
@@ -91,7 +130,8 @@ Item {
                 from: 80; to: 320
                 value: 160
                 stepSize: 16
-                implicitWidth: 120
+                implicitWidth: 100
+                Layout.alignment: Qt.AlignVCenter
 
                 background: Rectangle {
                     x: sizeSlider.leftPadding
@@ -129,10 +169,12 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.margins: 8
+        anchors.margins: 4
 
-        cellWidth: sizeSlider.value + 8
-        cellHeight: sizeSlider.value + 28  // extra for filename label
+        property int thumbSize: sizeSlider.value
+
+        cellWidth: thumbSize + 4
+        cellHeight: thumbSize + 4
         clip: true
         visible: images && images.length > 0
 
@@ -142,81 +184,41 @@ Item {
             policy: ScrollBar.AsNeeded
         }
 
-        delegate: Item {
+        delegate: Rectangle {
             width: grid.cellWidth
             height: grid.cellHeight
+            color: "transparent"
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: 4
-                radius: Theme.radiusMd
-                color: delegateMa.containsMouse ? Theme.surfaceHover : Theme.surface
+                anchors.margins: 2
+                radius: Theme.radiusSm
+                color: Theme.surface
                 border.color: Theme.borderSubtle
                 border.width: 1
+                clip: true
 
-                ColumnLayout {
+                Image {
                     anchors.fill: parent
-                    anchors.margins: 4
-                    spacing: 2
-
-                    // Thumbnail
-                    Image {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        source: images[index]
-                        fillMode: Image.PreserveAspectFit
-                        asynchronous: true
-                        cache: true
-                        smooth: true
-
-                        // Loading placeholder
-                        Rectangle {
-                            anchors.fill: parent
-                            color: Theme.border
-                            visible: parent.status !== Image.Ready
-                            radius: Theme.radiusSm
-
-                            Icon {
-                                anchors.centerIn: parent
-                                name: "loader"
-                                size: 20
-                                color: Theme.textMuted
-                                visible: parent.visible
-
-                                RotationAnimation on rotation {
-                                    from: 0; to: 360
-                                    duration: 1200
-                                    loops: Animation.Infinite
-                                    running: parent.visible
-                                }
-                            }
-                        }
-                    }
-
-                    // Filename
-                    Text {
-                        Layout.fillWidth: true
-                        text: {
-                            var url = images[index];
-                            var parts = url.split('/');
-                            return parts[parts.length - 1];
-                        }
-                        color: Theme.textMuted
-                        font.pixelSize: 10
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignHCenter
-                    }
+                    anchors.margins: 1
+                    source: images[index]
+                    fillMode: root.fitMode === 0 ? Image.PreserveAspectFit
+                            : root.fitMode === 1 ? Image.PreserveAspectCrop
+                            : Image.Stretch
+                    asynchronous: true
+                    cache: true
+                    smooth: true
+                    sourceSize.width: grid.thumbSize * 2
+                    sourceSize.height: grid.thumbSize * 2
                 }
 
-                MouseArea {
-                    id: delegateMa
+                // Loading placeholder
+                Rectangle {
                     anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onDoubleClicked: {
-                        // Open full-size image
-                        Qt.openUrlExternally(images[index])
-                    }
+                    color: Theme.border
+                    visible: parent.children[0].status !== Image.Ready
+                    radius: Theme.radiusSm
+                    opacity: 0.5
                 }
             }
         }
