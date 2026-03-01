@@ -39,35 +39,17 @@ class AppController(QObject):
         Returns True if a valid projects root is available.  If a non-folder
         entity blocks the default path, prompts the user to pick an
         alternative location.
-
-        Also migrates the old "Splats Projects" (with space) folder to
-        "SplatsProjects" because nerfstudio/COLMAP shell commands break
-        on paths containing spaces.
         """
+        # Check for a previously saved custom location
+        saved = self._load_projects_root()
+        if saved and saved.is_dir():
+            self._projects_root = saved
+            return True
+
         docs = Path(QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.DocumentsLocation
         ))
         default_path = docs / PROJECTS_FOLDER_NAME
-        old_path = docs / "Splats Projects"  # legacy name with space
-
-        # Migrate old folder if it exists and new one doesn't
-        if old_path.is_dir() and not default_path.exists():
-            try:
-                old_path.rename(default_path)
-                print(f"[migrate] Renamed '{old_path}' → '{default_path}'")
-                # Also fix any saved session paths
-                self._migrate_session_paths(str(old_path), str(default_path))
-            except OSError as e:
-                print(f"[WARN] Could not migrate '{old_path}': {e}", file=sys.stderr)
-
-        # Check for a previously saved custom location
-        saved = self._load_projects_root()
-        if saved and saved.is_dir():
-            # Reject saved roots that contain spaces (COLMAP-unsafe)
-            if " " not in str(saved):
-                self._projects_root = saved
-                return True
-            # Fall through to use the default (space-free) path
 
         if default_path.is_dir():
             # Already exists as a folder — use it
@@ -115,30 +97,6 @@ class AppController(QObject):
         data = self._load_session_data()
         data["projects_root"] = str(self._projects_root) if self._projects_root else None
         self._write_session(data)
-
-    def _migrate_session_paths(self, old_prefix: str, new_prefix: str):
-        """Rewrite open_projects and projects_root in session.json after
-        renaming the projects root directory."""
-        data = self._load_session_data()
-        changed = False
-        # Fix projects_root
-        root = data.get("projects_root", "")
-        if root and root.startswith(old_prefix):
-            data["projects_root"] = root.replace(old_prefix, new_prefix, 1)
-            changed = True
-        # Fix open project paths
-        dirs = data.get("open_projects", [])
-        new_dirs = []
-        for d in dirs:
-            if d.startswith(old_prefix):
-                new_dirs.append(d.replace(old_prefix, new_prefix, 1))
-                changed = True
-            else:
-                new_dirs.append(d)
-        if changed:
-            data["open_projects"] = new_dirs
-            self._write_session(data)
-            print(f"[migrate] Updated session paths: {old_prefix} → {new_prefix}")
 
     # ── Window lifecycle ──────────────────────────────────────────────────
 
@@ -214,12 +172,7 @@ class AppController(QObject):
         try:
             with open(SESSION_FILE) as f:
                 data = json.load(f)
-            # Migrate old format (plain list of dirs) → new dict format
-            if isinstance(data, list):
-                return {"open_projects": data}
-            if isinstance(data, dict):
-                return data
-            return {}
+            return data if isinstance(data, dict) else {}
         except Exception:
             return {}
 

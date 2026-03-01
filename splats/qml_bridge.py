@@ -45,7 +45,6 @@ class Backend(QObject):
     hasVideoChanged = pyqtSignal()
     maxFramesChanged = pyqtSignal()
     trainingIterationsChanged = pyqtSignal()
-    reconstructionMethodChanged = pyqtSignal()
     projectDirChanged = pyqtSignal()
     isProcessingChanged = pyqtSignal()
     canResumeTrainingChanged = pyqtSignal()
@@ -65,7 +64,6 @@ class Backend(QObject):
         self._video_info = ""
         self._max_frames = 300
         self._training_iterations = 30000
-        self._reconstruction_method = 1  # Nerfstudio
         self._status_text = "Ready"
         self._log_lines: list[str] = []
         self._viewer_url = ""
@@ -140,18 +138,6 @@ class Backend(QObject):
         if self._training_iterations != v:
             self._training_iterations = v
             self.trainingIterationsChanged.emit()
-            self._save_settings()
-            self._auto_save_project()
-
-    @pyqtProperty(int, notify=reconstructionMethodChanged)
-    def reconstructionMethod(self):
-        return self._reconstruction_method
-
-    @reconstructionMethod.setter
-    def reconstructionMethod(self, v):
-        if self._reconstruction_method != v:
-            self._reconstruction_method = v
-            self.reconstructionMethodChanged.emit()
             self._save_settings()
             self._auto_save_project()
 
@@ -279,10 +265,7 @@ class Backend(QObject):
         self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
 
-        if self._reconstruction_method == 1:
-            self._start_nerfstudio_pipeline()
-        else:
-            self._start_video_processing()
+        self._start_nerfstudio_pipeline()
 
     @pyqtSlot()
     def resumeFromTraining(self):
@@ -317,14 +300,6 @@ class Backend(QObject):
         self._connect_nerfstudio_worker()
         self._nerfstudio_worker.start()
         self._update_button_states()
-
-    @pyqtSlot()
-    def openProjectFolder(self):
-        """Open the project directory in the system file manager."""
-        if self._project.project_dir and self._project.project_dir.exists():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._project.project_dir)))
-        else:
-            self._log("No project directory")
 
     @pyqtSlot()
     def cancel(self):
@@ -495,7 +470,6 @@ class Backend(QObject):
 
     def _current_settings(self) -> dict:
         return {
-            'reconstruction_method': self._reconstruction_method,
             'training_iterations': self._training_iterations,
             'sample_rate': 5,
             'max_frames': self._max_frames,
@@ -510,8 +484,6 @@ class Backend(QObject):
         try:
             with open(self._settings_file) as f:
                 s = json.load(f)
-            if 'reconstruction_method' in s:
-                self._reconstruction_method = s['reconstruction_method']
             if 'training_iterations' in s:
                 self._training_iterations = s['training_iterations']
             if 'max_frames' in s:
@@ -523,7 +495,6 @@ class Backend(QObject):
         """Persist global default settings."""
         try:
             settings = {
-                'reconstruction_method': self._reconstruction_method,
                 'training_iterations': self._training_iterations,
                 'sample_rate': 5,
                 'max_frames': self._max_frames,
@@ -607,9 +578,6 @@ class Backend(QObject):
 
             # Restore settings
             s = self._project.settings
-            if s.get('reconstruction_method') is not None:
-                self._reconstruction_method = s['reconstruction_method']
-                self.reconstructionMethodChanged.emit()
             if s.get('training_iterations'):
                 self._training_iterations = s['training_iterations']
                 self.trainingIterationsChanged.emit()
@@ -926,7 +894,7 @@ class Backend(QObject):
     def _start_reconstruction(self, frame_paths: list):
         self._log("Stage 2/3: Performing 3D reconstruction...")
         base_dir = self._project.project_dir or self._workspace
-        method = "mock" if self._reconstruction_method == 0 else "colmap"
+        method = "colmap"
         self._reconstruction_worker = ReconstructionWorker(
             frame_paths, str(base_dir / "reconstruction"), method=method
         )
