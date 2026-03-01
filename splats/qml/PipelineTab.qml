@@ -275,18 +275,18 @@ Item {
             }
 
             IconButton {
-                text: "Export PLY"
-                iconName: "box"
-                enabled: backend ? backend.canExportPly : false
-                onClicked: backend.exportPly()
-            }
-
-            IconButton {
                 text: "Cancel"
                 variant: "danger"
                 iconName: "square"
                 enabled: backend ? backend.isProcessing : false
                 onClicked: backend.cancel()
+            }
+
+            IconButton {
+                text: "Export PLY"
+                iconName: "box"
+                enabled: backend ? backend.canExportPly : false
+                onClicked: backend.exportPly()
             }
         }
     }
