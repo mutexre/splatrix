@@ -59,7 +59,7 @@ Rectangle {
                     id: loaderIcon
                     anchors.centerIn: parent
                     name: "loader"
-                    size: 20
+                    size: 15
                     color: Theme.running
                     visible: root.status === "running"
 
