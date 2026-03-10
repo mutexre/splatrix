@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Favicon (inline SVG as data URI) -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230891b2'/><text x='16' y='23' font-size='20' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='700'>X</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><radialGradient id='a' cx='40%25' cy='40%25' r='50%25'><stop offset='0' stop-color='%2322d3ee' stop-opacity='.9'/><stop offset='1' stop-color='%230891b2' stop-opacity='0'/></radialGradient><radialGradient id='b' cx='60%25' cy='55%25' r='45%25'><stop offset='0' stop-color='%23ea580c' stop-opacity='.85'/><stop offset='1' stop-color='%23ea580c' stop-opacity='0'/></radialGradient><radialGradient id='c' cx='35%25' cy='65%25' r='40%25'><stop offset='0' stop-color='%2322d3ee' stop-opacity='.6'/><stop offset='1' stop-color='%230891b2' stop-opacity='0'/></radialGradient></defs><rect width='32' height='32' rx='6' fill='%230a0a0f'/><circle cx='12' cy='12' r='12' fill='url(%23a)'/><circle cx='20' cy='18' r='11' fill='url(%23b)'/><circle cx='11' cy='21' r='9' fill='url(%23c)'/></svg>">
 
     <style>
         :root {
@@ -36,7 +36,7 @@
 
         body {
             font-family: 'Inter', -apple-system, system-ui, sans-serif;
-            background: var(--bg);
+            background: transparent;
             color: var(--text);
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
@@ -78,14 +78,7 @@
         .logo-icon {
             width: 32px;
             height: 32px;
-            background: var(--accent);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            font-size: 18px;
-            color: white;
+            flex-shrink: 0;
         }
 
         .nav-links {
@@ -162,6 +155,7 @@
             height: 100%;
             z-index: -1;
             pointer-events: none;
+            background: var(--bg);
         }
 
         .hero-badge {
@@ -686,7 +680,7 @@ void main() {
 <nav>
     <div class="nav-inner">
         <a href="#" class="logo">
-            <div class="logo-icon">X</div>
+            <svg class="logo-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="g1" cx="40%" cy="40%" r="50%"><stop offset="0%" stop-color="#22d3ee" stop-opacity="0.9"/><stop offset="100%" stop-color="#0891b2" stop-opacity="0"/></radialGradient><radialGradient id="g2" cx="60%" cy="55%" r="45%"><stop offset="0%" stop-color="#ea580c" stop-opacity="0.85"/><stop offset="100%" stop-color="#ea580c" stop-opacity="0"/></radialGradient><radialGradient id="g3" cx="35%" cy="65%" r="40%"><stop offset="0%" stop-color="#22d3ee" stop-opacity="0.6"/><stop offset="100%" stop-color="#0891b2" stop-opacity="0"/></radialGradient></defs><rect width="32" height="32" rx="6" fill="#0a0a0f"/><circle cx="12" cy="12" r="12" fill="url(#g1)"/><circle cx="20" cy="18" r="11" fill="url(#g2)"/><circle cx="11" cy="21" r="9" fill="url(#g3)"/></svg>
             Splatrix
         </a>
         <div class="nav-links">
