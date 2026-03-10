@@ -242,19 +242,47 @@
             padding: 20px 24px;
             font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
             font-size: 14px;
-            line-height: 1.8;
+            line-height: 1.6;
             color: var(--text-muted);
             text-align: center;
         }
 
-        .install-body .cmd { color: var(--success); }
-        .install-body .comment { color: #525268; }
-        .install-body .note { font-size: 11px; color: #525268; margin-top: 10px; font-family: 'Inter', sans-serif; }
-        .install-body .cmdline { white-space: nowrap; }
-        .install-body .sep { border-top: 1px solid var(--border); margin: 12px 0; }
-        .install-body .run-line { display: flex; align-items: baseline; gap: 10px; justify-content: center; }
-        .install-body .run-label { font-size: 12px; color: #525268; font-family: 'Inter', sans-serif; }
-        .install-body .run-cmd { color: var(--text-muted); }
+        .install-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .install-row .label {
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #525268;
+            flex-shrink: 0;
+            min-width: 52px;
+            text-align: right;
+        }
+
+        .install-row .command {
+            color: var(--text);
+        }
+
+        .install-row + .install-row {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .install-note {
+            font-size: 11px;
+            color: #3f3f50;
+            margin-top: 14px;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+        }
 
         /* ── Platform tabs ── */
         .platform-tabs {
@@ -547,26 +575,23 @@
         </div>
         <div id="platform-linux" class="platform-content active">
             <div class="install-body">
-                <div class="cmdline"><span class="cmd">curl -fsSL</span> https://mutexre.github.io/splatrix/install.sh <span class="cmd">| bash</span></div>
-                <div class="sep"></div>
-                <div class="run-line"><span class="run-label">Run</span> <span class="run-cmd">~/.splatrix/bin/splatrix</span></div>
-                <div class="note">Self-contained — everything lives in ~/.splatrix/</div>
+                <div class="install-row"><span class="label">Install</span> <span class="command">curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash</span></div>
+                <div class="install-row"><span class="label">Run</span> <span class="command">~/.splatrix/bin/splatrix</span></div>
+                <div class="install-note">Self-contained install into ~/.splatrix/ &mdash; nothing else is modified</div>
             </div>
         </div>
         <div id="platform-macos" class="platform-content">
             <div class="install-body">
-                <div class="cmdline"><span class="cmd">curl -fsSL</span> https://mutexre.github.io/splatrix/install.sh <span class="cmd">| bash</span></div>
-                <div class="sep"></div>
-                <div class="run-line"><span class="run-label">Run</span> <span class="run-cmd">~/.splatrix/bin/splatrix</span></div>
-                <div class="note">Self-contained — everything lives in ~/.splatrix/</div>
+                <div class="install-row"><span class="label">Install</span> <span class="command">curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash</span></div>
+                <div class="install-row"><span class="label">Run</span> <span class="command">~/.splatrix/bin/splatrix</span></div>
+                <div class="install-note">Self-contained install into ~/.splatrix/ &mdash; nothing else is modified</div>
             </div>
         </div>
         <div id="platform-windows" class="platform-content">
             <div class="install-body">
-                <div class="cmdline"><span class="cmd">irm</span> https://mutexre.github.io/splatrix/install.ps1 <span class="cmd">| iex</span></div>
-                <div class="sep"></div>
-                <div class="run-line"><span class="run-label">Run</span> <span class="run-cmd">~\.splatrix\bin\splatrix.bat</span></div>
-                <div class="note">Self-contained — everything lives in ~\.splatrix\</div>
+                <div class="install-row"><span class="label">Install</span> <span class="command">irm https://mutexre.github.io/splatrix/install.ps1 | iex</span></div>
+                <div class="install-row"><span class="label">Run</span> <span class="command">~\.splatrix\bin\splatrix.bat</span></div>
+                <div class="install-note">Self-contained install into ~\.splatrix\ &mdash; nothing else is modified</div>
             </div>
         </div>
     </div>
