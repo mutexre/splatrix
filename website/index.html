@@ -32,7 +32,10 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        html { scroll-behavior: smooth; }
+        html {
+            scroll-behavior: smooth;
+            background: var(--bg);
+        }
 
         body {
             font-family: 'Inter', -apple-system, system-ui, sans-serif;
@@ -40,7 +43,6 @@
             color: var(--text);
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
-            position: relative;
         }
 
         /* ── Nav ── */
@@ -153,9 +155,13 @@
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: -1;
+            z-index: 0;
             pointer-events: none;
-            background: var(--bg);
+        }
+
+        #page-content {
+            position: relative;
+            z-index: 1;
         }
 
         .hero-badge {
@@ -676,6 +682,8 @@ void main() {
 })();
 </script>
 
+<div id="page-content">
+
 <!-- Nav -->
 <nav>
     <div class="nav-inner">
@@ -702,8 +710,7 @@ void main() {
         Open Source &mdash; MIT License
     </div>
     <h1>
-        Video to <span class="gradient">3D Gaussian Splats</span><br>
-        in one click
+        Video to <span class="gradient">Gaussian Splats</span>
     </h1>
     <p>
         Drop a video, click Start, and get a photorealistic 3D scene.
@@ -902,6 +909,8 @@ void main() {
         <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank">GaussianSplats3D</a>.
     </p>
 </footer>
+
+</div><!-- #page-content -->
 
 </body>
 </html>
