@@ -526,15 +526,15 @@
             Terminal
         </div>
         <div class="platform-tabs">
-            <button class="platform-tab active" onclick="switchPlatform('linux')">
+            <button class="platform-tab active" data-platform="linux" onclick="switchPlatform('linux')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 Linux
             </button>
-            <button class="platform-tab" onclick="switchPlatform('macos')">
+            <button class="platform-tab" data-platform="macos" onclick="switchPlatform('macos')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>
                 macOS
             </button>
-            <button class="platform-tab" onclick="switchPlatform('windows')">
+            <button class="platform-tab" data-platform="windows" onclick="switchPlatform('windows')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
                 Windows
             </button>
@@ -570,25 +570,19 @@
 
     <script>
     function switchPlatform(platform) {
-        document.querySelectorAll('.platform-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.platform-content').forEach(c => c.classList.remove('active'));
-        document.getElementById('platform-' + platform).classList.add('active');
-        event.currentTarget.classList.add('active');
+        document.querySelectorAll('.platform-tab').forEach(function(t) {
+            t.classList.toggle('active', t.getAttribute('data-platform') === platform);
+        });
+        document.querySelectorAll('.platform-content').forEach(function(c) {
+            c.classList.toggle('active', c.id === 'platform-' + platform);
+        });
     }
-    // Auto-detect platform
+    // Auto-detect OS on page load
     (function() {
         var ua = navigator.userAgent || navigator.platform || '';
-        if (/Mac/i.test(ua)) switchByName('macos');
-        else if (/Win/i.test(ua)) switchByName('windows');
-        function switchByName(p) {
-            document.querySelectorAll('.platform-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.platform-content').forEach(c => c.classList.remove('active'));
-            document.getElementById('platform-' + p).classList.add('active');
-            document.querySelectorAll('.platform-tab').forEach(t => {
-                if (t.textContent.trim().toLowerCase().includes(p === 'macos' ? 'macos' : 'windows'))
-                    t.classList.add('active');
-            });
-        }
+        if (/Mac/i.test(ua)) switchPlatform('macos');
+        else if (/Win/i.test(ua)) switchPlatform('windows');
+        // else: Linux stays as default
     })();
     </script>
 </section>
