@@ -268,7 +268,7 @@
         }
 
         .install-row .command {
-            color: var(--text);
+            color: var(--success);
         }
 
         .install-row + .install-row {
@@ -560,38 +560,25 @@
             Terminal
         </div>
         <div class="platform-tabs">
-            <button class="platform-tab active" data-platform="linux" onclick="switchPlatform('linux')">
+            <button class="platform-tab active" data-platform="unix" onclick="switchPlatform('unix')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                Linux
-            </button>
-            <button class="platform-tab" data-platform="macos" onclick="switchPlatform('macos')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>
-                macOS
+                Linux / macOS
             </button>
             <button class="platform-tab" data-platform="windows" onclick="switchPlatform('windows')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
                 Windows
             </button>
         </div>
-        <div id="platform-linux" class="platform-content active">
+        <div id="platform-unix" class="platform-content active">
             <div class="install-body">
                 <div class="install-row"><span class="label">Install</span> <span class="command">curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash</span></div>
                 <div class="install-row"><span class="label">Run</span> <span class="command">~/.splatrix/bin/splatrix</span></div>
-                <div class="install-note">Self-contained install into ~/.splatrix/ &mdash; nothing else is modified</div>
-            </div>
-        </div>
-        <div id="platform-macos" class="platform-content">
-            <div class="install-body">
-                <div class="install-row"><span class="label">Install</span> <span class="command">curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash</span></div>
-                <div class="install-row"><span class="label">Run</span> <span class="command">~/.splatrix/bin/splatrix</span></div>
-                <div class="install-note">Self-contained install into ~/.splatrix/ &mdash; nothing else is modified</div>
             </div>
         </div>
         <div id="platform-windows" class="platform-content">
             <div class="install-body">
                 <div class="install-row"><span class="label">Install</span> <span class="command">irm https://mutexre.github.io/splatrix/install.ps1 | iex</span></div>
                 <div class="install-row"><span class="label">Run</span> <span class="command">~\.splatrix\bin\splatrix.bat</span></div>
-                <div class="install-note">Self-contained install into ~\.splatrix\ &mdash; nothing else is modified</div>
             </div>
         </div>
     </div>
@@ -608,9 +595,8 @@
     // Auto-detect OS on page load
     (function() {
         var ua = navigator.userAgent || navigator.platform || '';
-        if (/Mac/i.test(ua)) switchPlatform('macos');
-        else if (/Win/i.test(ua)) switchPlatform('windows');
-        // else: Linux stays as default
+        if (/Win/i.test(ua)) switchPlatform('windows');
+        // Linux + macOS both use the unix tab (default)
     })();
     </script>
 </section>
