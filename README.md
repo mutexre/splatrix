@@ -19,18 +19,23 @@ Splatrix is a desktop application that takes a video file and produces a 3D Gaus
 
 | Component | Version |
 |-----------|---------|
-| OS | Linux (tested on RHEL 9 / Ubuntu 22.04+) |
-| Python | 3.10+ |
-| GPU | NVIDIA with CUDA 12.x (required for training) |
+| OS | Linux x86_64 / macOS (Intel or Apple Silicon) / Windows x86_64 |
+| Python | 3.10+ (auto-managed) |
+| GPU | NVIDIA + CUDA 12.x (Linux/Windows) or Apple Silicon MPS (macOS) |
 | VRAM | 8 GB+ recommended |
-| Conda | Miniconda or Anaconda |
 
 ## Install
 
-One command, no prerequisites (just Linux x86_64 + NVIDIA drivers):
+Everything goes into `~/.splatrix/` — zero system modification.
 
+**Linux / macOS:**
 ```bash
-curl -fsSL https://splatrix.github.io/splatrix/install.sh | bash
+curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://mutexre.github.io/splatrix/install.ps1 | iex
 ```
 
 This automatically installs micromamba, PyTorch, COLMAP, FFmpeg, Nerfstudio, and Splatrix.
@@ -38,13 +43,22 @@ This automatically installs micromamba, PyTorch, COLMAP, FFmpeg, Nerfstudio, and
 ## Run
 
 ```bash
-splatrix
+~/.splatrix/bin/splatrix
 ```
+
+On Windows: `~\.splatrix\bin\splatrix.bat`
 
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/splatrix/splatrix/main/uninstall.sh | bash
+~/.splatrix/bin/splatrix  # has no uninstall — just:
+rm -rf ~/.splatrix
+# Linux: also rm ~/.local/share/applications/splatrix.desktop
+```
+
+Or use the uninstall script:
+```bash
+curl -fsSL https://raw.githubusercontent.com/mutexre/splatrix/main/uninstall.sh | bash
 ```
 
 ## Usage

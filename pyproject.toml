@@ -50,10 +50,10 @@ dev = [
 splatrix = "splatrix.main_qml:main"
 
 [project.urls]
-Homepage = "https://github.com/splatrix/splatrix"
-Documentation = "https://splatrix.github.io/splatrix"
-Repository = "https://github.com/splatrix/splatrix"
-Issues = "https://github.com/splatrix/splatrix/issues"
+Homepage = "https://github.com/mutexre/splatrix"
+Documentation = "https://mutexre.github.io/splatrix"
+Repository = "https://github.com/mutexre/splatrix"
+Issues = "https://github.com/mutexre/splatrix/issues"
 
 [tool.setuptools.packages.find]
 include = ["splatrix*"]

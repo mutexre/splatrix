@@ -2,28 +2,32 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════════
-#  Splatrix Installer — zero-dependency, single-command install
+#  Splatrix Installer — self-contained, zero system modification
 #
 #  Usage:
-#    curl -fsSL https://splatrix.github.io/splatrix/install.sh | bash
+#    curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash
 #
-#  What this does:
-#    1. Installs micromamba (~5 MB static binary)
-#    2. Downloads Splatrix source
-#    3. Creates environment with all dependencies
-#    4. Installs the 'splatrix' command
+#  Everything goes into ~/.splatrix/ — nothing else is touched.
 #
-#  Requirements: Linux x86_64 with NVIDIA GPU + drivers installed
+#  Layout:
+#    ~/.splatrix/
+#    ├── bin/micromamba
+#    ├── bin/splatrix       ← launcher script
+#    ├── envs/              ← micromamba root (envs + packages)
+#    ├── src/               ← splatrix source code
+#    └── splatrix.desktop   ← Linux desktop entry (optional)
+#
+#  Requirements:
+#    Linux x86_64:  NVIDIA GPU + drivers
+#    macOS arm64:   Apple Silicon (MPS acceleration)
+#    macOS x86_64:  NVIDIA GPU or CPU-only
 # ══════════════════════════════════════════════════════════════════
 
 SPLATRIX_VERSION="${SPLATRIX_VERSION:-main}"
-SPLATRIX_REPO="https://github.com/splatrix/splatrix"
+SPLATRIX_REPO="https://github.com/mutexre/splatrix"
 SPLATRIX_HOME="${SPLATRIX_HOME:-$HOME/.splatrix}"
-MAMBA_ROOT="${MAMBA_ROOT_PREFIX:-$HOME/.local/share/micromamba}"
 ENV_NAME="splatrix"
 PYTHON_VERSION="3.10"
-CUDA_VERSION="12.1"
-LAUNCHER_DIR="$HOME/.local/bin"
 
 # ── Colors ────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -35,12 +39,31 @@ warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 fail()  { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 step()  { echo -e "\n${BOLD}── $* ──${NC}"; }
 
-# ── Preflight ─────────────────────────────────────────────────────
+# ── Detect platform ──────────────────────────────────────────────
 
 step "Preflight checks"
 
-[[ "$(uname -s)" == "Linux" ]] || fail "Splatrix currently supports Linux only."
-[[ "$(uname -m)" == "x86_64" ]] || fail "Splatrix requires x86_64 architecture."
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+
+case "$OS" in
+    Linux)
+        [[ "$ARCH" == "x86_64" ]] || fail "Linux: only x86_64 supported (got $ARCH)."
+        PLATFORM="linux-64"
+        ;;
+    Darwin)
+        case "$ARCH" in
+            arm64)  PLATFORM="osx-arm64" ;;
+            x86_64) PLATFORM="osx-64" ;;
+            *)      fail "macOS: unsupported architecture $ARCH." ;;
+        esac
+        ;;
+    *)
+        fail "Unsupported OS: $OS. Use install.ps1 for Windows."
+        ;;
+esac
+
+ok "Platform: $OS $ARCH ($PLATFORM)"
 
 # Download tool
 if command -v curl >/dev/null 2>&1; then
@@ -48,45 +71,62 @@ if command -v curl >/dev/null 2>&1; then
 elif command -v wget >/dev/null 2>&1; then
     DL="wget -qO-"
 else
-    fail "Neither curl nor wget found. Install one of them first."
+    fail "Neither curl nor wget found. Install one first."
 fi
 
 # GPU check
-if command -v nvidia-smi >/dev/null 2>&1; then
-    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
-    GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
-    ok "NVIDIA GPU: ${GPU_NAME} (${GPU_MEM} MB)"
+if [[ "$OS" == "Linux" ]]; then
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+        GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+        ok "NVIDIA GPU: ${GPU_NAME} (${GPU_MEM} MB)"
+        CUDA_VERSION="12.1"
+    else
+        warn "nvidia-smi not found. NVIDIA drivers required for GPU training."
+        warn "Install drivers: https://docs.nvidia.com/cuda/cuda-installation-guide-linux/"
+        read -rp "Continue without GPU? (y/N) " yn
+        [[ "$yn" =~ ^[Yy]$ ]] || exit 0
+        CUDA_VERSION=""
+    fi
+elif [[ "$OS" == "Darwin" && "$ARCH" == "arm64" ]]; then
+    ok "Apple Silicon detected — MPS acceleration available"
+    CUDA_VERSION=""
 else
-    warn "nvidia-smi not found. NVIDIA drivers must be installed for GPU training."
-    warn "Install drivers: https://docs.nvidia.com/cuda/cuda-installation-guide-linux/"
-    read -rp "Continue anyway? (y/N) " yn
-    [[ "$yn" =~ ^[Yy]$ ]] || exit 0
+    info "macOS x86_64 — CPU-only (no CUDA on macOS)"
+    CUDA_VERSION=""
 fi
+
+# ── Create directory structure ────────────────────────────────────
+
+step "Setup directories"
+
+mkdir -p "$SPLATRIX_HOME/bin"
+mkdir -p "$SPLATRIX_HOME/envs"
+
+ok "Install directory: $SPLATRIX_HOME"
 
 # ── micromamba ────────────────────────────────────────────────────
 
 step "micromamba"
 
-MAMBA_EXE="$LAUNCHER_DIR/micromamba"
-mkdir -p "$LAUNCHER_DIR"
+MAMBA_EXE="$SPLATRIX_HOME/bin/micromamba"
+export MAMBA_ROOT_PREFIX="$SPLATRIX_HOME/envs"
 
 if [[ -f "$MAMBA_EXE" ]]; then
     ok "micromamba already installed"
 else
     info "Downloading micromamba (~5 MB)..."
-    $DL "https://micro.mamba.pm/api/micromamba/linux-64/latest" | tar xj -C "$LAUNCHER_DIR" --strip-components=1 bin/micromamba
+    $DL "https://micro.mamba.pm/api/micromamba/${PLATFORM}/latest" \
+        | tar xj -C "$SPLATRIX_HOME/bin" --strip-components=1 bin/micromamba
     chmod +x "$MAMBA_EXE"
     ok "micromamba installed"
 fi
 
-export MAMBA_ROOT_PREFIX="$MAMBA_ROOT"
 eval "$("$MAMBA_EXE" shell hook -s bash)"
 
-# ── Download Splatrix ───────────────────────────────────────────────
+# ── Download Splatrix ────────────────────────────────────────────
 
 step "Download Splatrix"
-
-mkdir -p "$SPLATRIX_HOME"
 
 if [[ -d "$SPLATRIX_HOME/src/.git" ]]; then
     info "Updating existing installation..."
@@ -103,7 +143,7 @@ fi
 
 cd "$SPLATRIX_HOME/src"
 
-# ── Environment ───────────────────────────────────────────────────
+# ── Environment ──────────────────────────────────────────────────
 
 step "Create environment"
 
@@ -117,97 +157,123 @@ fi
 
 micromamba activate "$ENV_NAME"
 
-# ── Dependencies ──────────────────────────────────────────────────
+# ── Dependencies ─────────────────────────────────────────────────
 
 step "Install dependencies"
 
-info "Installing PyTorch with CUDA ${CUDA_VERSION}... (this may take a few minutes)"
-pip install torch torchvision \
-    --index-url "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}" \
-    -q 2>/dev/null
+# PyTorch
+if [[ -n "$CUDA_VERSION" ]]; then
+    info "Installing PyTorch with CUDA ${CUDA_VERSION}... (may take a few minutes)"
+    pip install torch torchvision \
+        --index-url "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}" \
+        -q 2>/dev/null
+else
+    info "Installing PyTorch (CPU/MPS)... (may take a few minutes)"
+    pip install torch torchvision -q 2>/dev/null
+fi
 ok "PyTorch installed"
 
+# COLMAP + FFmpeg
 info "Installing COLMAP and FFmpeg..."
-"$MAMBA_EXE" install -n "$ENV_NAME" -c conda-forge colmap ffmpeg -y -q > /dev/null 2>&1
+if [[ "$PLATFORM" == "osx-arm64" ]]; then
+    # conda-forge COLMAP may not be available for osx-arm64
+    "$MAMBA_EXE" install -n "$ENV_NAME" -c conda-forge ffmpeg -y -q > /dev/null 2>&1
+    # Try COLMAP — fall back to brew suggestion
+    if ! "$MAMBA_EXE" install -n "$ENV_NAME" -c conda-forge colmap -y -q > /dev/null 2>&1; then
+        warn "COLMAP not available via conda for Apple Silicon."
+        warn "Install manually: brew install colmap"
+    fi
+else
+    "$MAMBA_EXE" install -n "$ENV_NAME" -c conda-forge colmap ffmpeg -y -q > /dev/null 2>&1
+fi
 ok "COLMAP + FFmpeg installed"
 
-info "Installing Nerfstudio... (this may take a few minutes)"
+# OpenCV (needed for feature overlays)
+info "Installing OpenCV..."
+pip install opencv-python-headless -q 2>/dev/null
+ok "OpenCV installed"
+
+# Nerfstudio
+info "Installing Nerfstudio... (may take a few minutes)"
 pip install nerfstudio -q 2>/dev/null
 ok "Nerfstudio installed"
 
+# Splatrix
 info "Installing Splatrix..."
 pip install -e . -q 2>/dev/null
 ok "Splatrix installed"
 
-# ── Launcher ──────────────────────────────────────────────────────
+# ── Launcher script ──────────────────────────────────────────────
 
 step "Create launcher"
 
-cat > "$LAUNCHER_DIR/splatrix" << LAUNCHER_EOF
+cat > "$SPLATRIX_HOME/bin/splatrix" << 'LAUNCHER_OUTER'
 #!/usr/bin/env bash
-# Splatrix launcher — auto-activates environment via micromamba
+# Splatrix launcher — self-contained, no PATH modification needed
 
-export MAMBA_ROOT_PREFIX="${MAMBA_ROOT}"
-MAMBA_EXE="${MAMBA_EXE}"
+SPLATRIX_HOME="${SPLATRIX_HOME:-$HOME/.splatrix}"
+MAMBA_EXE="$SPLATRIX_HOME/bin/micromamba"
+export MAMBA_ROOT_PREFIX="$SPLATRIX_HOME/envs"
 
-[[ -f "\$MAMBA_EXE" ]] || { echo "Error: micromamba not found at \$MAMBA_EXE"; exit 1; }
+[[ -f "$MAMBA_EXE" ]] || { echo "Error: micromamba not found. Run the installer."; exit 1; }
 
-eval "\$("\$MAMBA_EXE" shell hook -s bash)"
+eval "$("$MAMBA_EXE" shell hook -s bash)"
 micromamba activate splatrix 2>/dev/null || { echo "Error: 'splatrix' env not found. Run the installer."; exit 1; }
 
-[[ -n "\${CONDA_PREFIX:-}" ]] && export LD_LIBRARY_PATH="\${CONDA_PREFIX}/lib:\${LD_LIBRARY_PATH:-}"
+[[ -n "${CONDA_PREFIX:-}" ]] && export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 
-exec python -m splatrix.main_qml "\$@"
-LAUNCHER_EOF
+exec python -m splatrix.main_qml "$@"
+LAUNCHER_OUTER
 
-chmod +x "$LAUNCHER_DIR/splatrix"
-ok "Launcher created: ${LAUNCHER_DIR}/splatrix"
+chmod +x "$SPLATRIX_HOME/bin/splatrix"
+ok "Launcher: $SPLATRIX_HOME/bin/splatrix"
 
-# ── PATH setup ────────────────────────────────────────────────────
+# ── Desktop entry (Linux only) ───────────────────────────────────
 
-if [[ ":$PATH:" != *":$LAUNCHER_DIR:"* ]]; then
-    step "PATH setup"
+if [[ "$OS" == "Linux" ]]; then
+    DESKTOP_DIR="$HOME/.local/share/applications"
+    mkdir -p "$DESKTOP_DIR"
 
-    SHELL_NAME=$(basename "${SHELL:-/bin/bash}")
-    RC_FILE=""
-    case "$SHELL_NAME" in
-        bash) RC_FILE="$HOME/.bashrc" ;;
-        zsh)  RC_FILE="$HOME/.zshrc" ;;
-        fish) RC_FILE="$HOME/.config/fish/config.fish" ;;
-    esac
+    cat > "$DESKTOP_DIR/splatrix.desktop" << DESKTOP_EOF
+[Desktop Entry]
+Type=Application
+Name=Splatrix
+Comment=Video to 3D Gaussian Splats
+Exec=$SPLATRIX_HOME/bin/splatrix
+Icon=$SPLATRIX_HOME/src/splatrix/qml/icons/app-icon.svg
+Terminal=false
+Categories=Graphics;3DGraphics;Science;
+DESKTOP_EOF
 
-    if [[ -n "$RC_FILE" ]]; then
-        if [[ "$SHELL_NAME" == "fish" ]]; then
-            grep -qF '.local/bin' "$RC_FILE" 2>/dev/null || echo 'set -gx PATH $HOME/.local/bin $PATH' >> "$RC_FILE"
-        else
-            grep -qF '.local/bin' "$RC_FILE" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC_FILE"
-        fi
-        ok "Added ~/.local/bin to PATH in ${RC_FILE}"
-    fi
-
-    export PATH="$LAUNCHER_DIR:$PATH"
+    ok "Desktop entry installed (app menu)"
 fi
 
-# ── Verify ────────────────────────────────────────────────────────
+# ── macOS app alias (optional) ───────────────────────────────────
+
+if [[ "$OS" == "Darwin" ]]; then
+    info "To launch from anywhere, add an alias to your shell profile:"
+    echo "    alias splatrix='$SPLATRIX_HOME/bin/splatrix'"
+fi
+
+# ── Verify ───────────────────────────────────────────────────────
 
 step "Verification"
 
 python -c "import torch; print(f'  PyTorch {torch.__version__}  CUDA: {torch.cuda.is_available()}')" 2>/dev/null || warn "PyTorch verification failed"
-python -c "import nerfstudio; print(f'  Nerfstudio OK')" 2>/dev/null || warn "Nerfstudio verification failed"
+python -c "import nerfstudio; print('  Nerfstudio OK')" 2>/dev/null || warn "Nerfstudio verification failed"
 python -c "from PyQt6.QtWidgets import QApplication; print('  PyQt6 OK')" 2>/dev/null || warn "PyQt6 verification failed"
 
-# ── Done ──────────────────────────────────────────────────────────
+# ── Done ─────────────────────────────────────────────────────────
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}║   ${BOLD}Splatrix installed successfully!${NC}${GREEN}                     ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   Run:  ${CYAN}splatrix${NC}${GREEN}                                       ║${NC}"
+echo -e "${GREEN}║   Run:  ${CYAN}~/.splatrix/bin/splatrix${NC}${GREEN}                       ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
-
-if [[ ":$PATH:" != *":$LAUNCHER_DIR:"* ]]; then
-    warn "Restart your terminal or run: source ~/.bashrc"
-fi
+echo "Everything installed in: $SPLATRIX_HOME"
+echo "Nothing outside this directory was modified."
+echo ""
