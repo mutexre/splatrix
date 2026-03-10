@@ -580,13 +580,20 @@ float fbm(vec2 p) {
     return v;
 }
 
+// Grid pattern: returns brightness at grid intersections
+float grid(vec2 p, float spacing, float thickness) {
+    vec2 g = abs(fract(p / spacing - 0.5) - 0.5) * spacing;
+    float d = min(g.x, g.y);
+    return 1.0 - smoothstep(0.0, thickness, d);
+}
+
 void main() {
     vec2 uv = gl_FragCoord.xy / r;
     float aspect = r.x / r.y;
     vec2 p = vec2(uv.x * aspect, uv.y);
 
-    // Slow drifting gaussian blobs
-    float s = t * 0.08;
+    // Very subtle drifting gaussian blobs
+    float s = t * 0.06;
     vec2 c1 = vec2(0.5 * aspect + sin(s * 1.1) * 0.4, 0.5 + cos(s * 0.9) * 0.3);
     vec2 c2 = vec2(0.5 * aspect + cos(s * 0.7) * 0.5, 0.5 + sin(s * 1.3) * 0.35);
     vec2 c3 = vec2(0.5 * aspect + sin(s * 0.5 + 2.0) * 0.45, 0.5 + cos(s * 1.1 + 1.0) * 0.3);
@@ -597,25 +604,40 @@ void main() {
     float g3 = exp(-dot(p - c3, p - c3) * 4.0);
     float g4 = exp(-dot(p - c4, p - c4) * 3.5);
 
-    // Cinematic teal and orange
+    // Cinematic teal and orange — very subdued
     vec3 teal   = vec3(0.03, 0.57, 0.70);
     vec3 orange = vec3(0.92, 0.35, 0.05);
     vec3 deep   = vec3(0.04, 0.04, 0.06);
 
     vec3 col = deep;
-    col += teal * g1 * 0.4;
-    col += orange * g2 * 0.3;
-    col += teal * g3 * 0.25;
-    col += orange * g4 * 0.2;
+    col += teal * g1 * 0.12;
+    col += orange * g2 * 0.09;
+    col += teal * g3 * 0.08;
+    col += orange * g4 * 0.06;
 
-    // Shimmer
-    float sh = fbm(p * 6.0 + t * 0.15);
-    float sh2 = fbm(p * 10.0 - t * 0.1 + 50.0);
-    col += vec3(0.5, 0.7, 0.6) * sh * sh2 * 0.07;
+    // Grid shimmer — dark lines with subtle animated glow at intersections
+    float spacing = 0.06;
+    float gridVal = grid(p, spacing, 0.001);
 
-    // Vignette
-    float vig = 1.0 - dot((uv - 0.5) * 1.3, (uv - 0.5) * 1.3);
-    col *= smoothstep(0.0, 0.6, vig);
+    // Grid intersection dots — brighter where blobs overlap
+    vec2 nearest = floor(p / spacing + 0.5) * spacing;
+    float distToNode = length(p - nearest);
+    float dot_glow = exp(-distToNode * distToNode * 8000.0);
+
+    // Animate grid nodes: pulse based on noise + time
+    float pulse = noise(nearest * 10.0 + t * 0.3) * 0.5 + 0.5;
+    pulse *= pulse;
+
+    // Grid color: teal-ish lines, brighter at blob intersections
+    float blobInfluence = g1 + g2 + g3 + g4;
+    vec3 gridColor = mix(vec3(0.08, 0.12, 0.14), teal * 0.4, blobInfluence * 0.3);
+
+    col += gridColor * gridVal * 0.25;
+    col += gridColor * dot_glow * pulse * 0.5;
+
+    // Vignette — strong to keep edges very dark
+    float vig = 1.0 - dot((uv - 0.5) * 1.4, (uv - 0.5) * 1.4);
+    col *= smoothstep(0.0, 0.5, vig);
 
     gl_FragColor = vec4(col, 1.0);
 }
