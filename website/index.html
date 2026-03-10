@@ -248,6 +248,8 @@
 
         .install-body .cmd { color: var(--success); }
         .install-body .comment { color: #525268; }
+        .install-body .note { font-size: 11px; color: #525268; margin-top: 8px; font-family: 'Inter', sans-serif; }
+        .install-body .cmdline { white-space: nowrap; }
 
         /* ── Platform tabs ── */
         .platform-tabs {
@@ -541,29 +543,20 @@
         </div>
         <div id="platform-linux" class="platform-content active">
             <div class="install-body">
-                <div><span class="comment"># Install — everything goes into ~/.splatrix/</span></div>
-                <div><span class="cmd">curl -fsSL</span> https://mutexre.github.io/splatrix/install.sh <span class="cmd">| bash</span></div>
-                <br>
-                <div><span class="comment"># Run</span></div>
-                <div><span class="cmd">~/.splatrix/bin/splatrix</span></div>
+                <div class="cmdline"><span class="cmd">curl -fsSL</span> https://mutexre.github.io/splatrix/install.sh <span class="cmd">| bash</span></div>
+                <div class="note">Self-contained install into ~/.splatrix/</div>
             </div>
         </div>
         <div id="platform-macos" class="platform-content">
             <div class="install-body">
-                <div><span class="comment"># Install — everything goes into ~/.splatrix/</span></div>
-                <div><span class="cmd">curl -fsSL</span> https://mutexre.github.io/splatrix/install.sh <span class="cmd">| bash</span></div>
-                <br>
-                <div><span class="comment"># Run</span></div>
-                <div><span class="cmd">~/.splatrix/bin/splatrix</span></div>
+                <div class="cmdline"><span class="cmd">curl -fsSL</span> https://mutexre.github.io/splatrix/install.sh <span class="cmd">| bash</span></div>
+                <div class="note">Self-contained install into ~/.splatrix/</div>
             </div>
         </div>
         <div id="platform-windows" class="platform-content">
             <div class="install-body">
-                <div><span class="comment"># PowerShell — everything goes into ~\.splatrix\</span></div>
-                <div><span class="cmd">irm</span> https://mutexre.github.io/splatrix/install.ps1 <span class="cmd">| iex</span></div>
-                <br>
-                <div><span class="comment"># Run</span></div>
-                <div><span class="cmd">~\.splatrix\bin\splatrix.bat</span></div>
+                <div class="cmdline"><span class="cmd">irm</span> https://mutexre.github.io/splatrix/install.ps1 <span class="cmd">| iex</span></div>
+                <div class="note">Self-contained install into ~\.splatrix\</div>
             </div>
         </div>
     </div>
