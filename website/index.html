@@ -21,12 +21,12 @@
             --border: #1e1e2e;
             --text: #e4e4e7;
             --text-muted: #71717a;
-            --accent: #14b8a6;
-            --accent-hover: #2dd4bf;
-            --accent-rgb: 20, 184, 166;
-            --orange: #f97316;
-            --orange-rgb: 249, 115, 22;
-            --success: #2dd4bf;
+            --accent: #0d9488;
+            --accent-hover: #14b8a6;
+            --accent-rgb: 13, 148, 136;
+            --orange: #fb923c;
+            --orange-rgb: 251, 146, 60;
+            --success: #14b8a6;
             --radius: 12px;
         }
 
@@ -40,6 +40,7 @@
             color: var(--text);
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
+            position: relative;
         }
 
         /* ── Nav ── */
@@ -153,15 +154,13 @@
             overflow: hidden;
         }
 
-        .hero::before {
-            content: '';
-            position: absolute;
+        #plasma-bg {
+            position: fixed;
             top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 800px;
-            height: 600px;
-            background: radial-gradient(ellipse, rgba(var(--accent-rgb), 0.08) 0%, transparent 70%);
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
             pointer-events: none;
         }
 
@@ -188,7 +187,7 @@
         }
 
         .hero h1 .gradient {
-            background: linear-gradient(135deg, var(--accent) 0%, #2dd4bf 40%, var(--orange) 100%);
+            background: linear-gradient(135deg, #14b8a6 0%, #2dd4bf 35%, #fb923c 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -551,6 +550,124 @@
     </style>
 </head>
 <body>
+
+<!-- WebGL Plasma Background -->
+<canvas id="plasma-bg"></canvas>
+<script>
+(function() {
+    var canvas = document.getElementById('plasma-bg');
+    var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) return;
+
+    function resize() {
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = window.innerWidth * dpr * 0.5;
+        canvas.height = window.innerHeight * dpr * 0.5;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    var vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, 'attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}');
+    gl.compileShader(vs);
+
+    var fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, [
+        'precision mediump float;',
+        'uniform float t;',
+        'uniform vec2 r;',
+        '',
+        'float hash(vec2 p) {',
+        '    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);',
+        '}',
+        '',
+        'float noise(vec2 p) {',
+        '    vec2 i = floor(p);',
+        '    vec2 f = fract(p);',
+        '    f = f * f * (3.0 - 2.0 * f);',
+        '    return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),',
+        '               mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);',
+        '}',
+        '',
+        'float fbm(vec2 p) {',
+        '    float v = 0.0, a = 0.5;',
+        '    for (int i = 0; i < 5; i++) {',
+        '        v += a * noise(p);',
+        '        p *= 2.0;',
+        '        a *= 0.5;',
+        '    }',
+        '    return v;',
+        '}',
+        '',
+        'void main() {',
+        '    vec2 uv = gl_FragCoord.xy / r;',
+        '    float aspect = r.x / r.y;',
+        '    vec2 p = vec2(uv.x * aspect, uv.y);',
+        '',
+        '    // Slow-moving gaussian blobs',
+        '    float s = t * 0.08;',
+        '    vec2 c1 = vec2(0.5 * aspect + sin(s * 1.1) * 0.4, 0.5 + cos(s * 0.9) * 0.3);',
+        '    vec2 c2 = vec2(0.5 * aspect + cos(s * 0.7) * 0.5, 0.5 + sin(s * 1.3) * 0.35);',
+        '    vec2 c3 = vec2(0.5 * aspect + sin(s * 0.5 + 2.0) * 0.45, 0.5 + cos(s * 1.1 + 1.0) * 0.3);',
+        '    vec2 c4 = vec2(0.5 * aspect + cos(s * 0.9 + 3.0) * 0.3, 0.5 + sin(s * 0.6 + 2.0) * 0.4);',
+        '',
+        '    float g1 = exp(-dot(p - c1, p - c1) * 3.0);',
+        '    float g2 = exp(-dot(p - c2, p - c2) * 2.5);',
+        '    float g3 = exp(-dot(p - c3, p - c3) * 4.0);',
+        '    float g4 = exp(-dot(p - c4, p - c4) * 3.5);',
+        '',
+        '    // Teal and orange',
+        '    vec3 teal = vec3(0.05, 0.58, 0.53);',
+        '    vec3 orange = vec3(0.98, 0.57, 0.24);',
+        '    vec3 deep = vec3(0.04, 0.04, 0.06);',
+        '',
+        '    vec3 col = deep;',
+        '    col += teal * g1 * 0.35;',
+        '    col += orange * g2 * 0.25;',
+        '    col += teal * g3 * 0.2;',
+        '    col += orange * g4 * 0.15;',
+        '',
+        '    // Shimmer overlay',
+        '    float shimmer = fbm(p * 6.0 + t * 0.15);',
+        '    float shimmer2 = fbm(p * 10.0 - t * 0.1 + 50.0);',
+        '    col += vec3(0.6, 0.8, 0.7) * shimmer * shimmer2 * 0.06;',
+        '',
+        '    // Vignette to darken edges',
+        '    float vig = 1.0 - dot((uv - 0.5) * 1.2, (uv - 0.5) * 1.2);',
+        '    col *= smoothstep(0.0, 0.7, vig);',
+        '',
+        '    gl_FragColor = vec4(col, 1.0);',
+        '}'
+    ].join('\n'));
+    gl.compileShader(fs);
+
+    var prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+    var pLoc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(pLoc);
+    gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+    var tLoc = gl.getUniformLocation(prog, 't');
+    var rLoc = gl.getUniformLocation(prog, 'r');
+
+    function frame(now) {
+        gl.uniform1f(tLoc, now * 0.001);
+        gl.uniform2f(rLoc, canvas.width, canvas.height);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+})();
+</script>
 
 <!-- Nav -->
 <nav>
