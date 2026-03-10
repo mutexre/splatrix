@@ -233,21 +233,37 @@ Invoke-Expression $hookOutput
 Set-Content -Path "$SPLATRIX_HOME\bin\splatrix.ps1" -Value $psLauncherContent -Encoding UTF8
 Write-Ok "PowerShell launcher: $SPLATRIX_HOME\bin\splatrix.ps1"
 
-# ── Desktop shortcut ─────────────────────────────────────────────
+# ── Shortcuts ─────────────────────────────────────────────────────
 
-$desktopPath = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = "$desktopPath\Splatrix.lnk"
+function New-Shortcut($Path) {
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $lnk = $shell.CreateShortcut($Path)
+        $lnk.TargetPath = "$SPLATRIX_HOME\bin\splatrix.bat"
+        $lnk.WorkingDirectory = $SPLATRIX_HOME
+        $lnk.Description = "Splatrix - Video to 3D Gaussian Splats"
+        $lnk.Save()
+        return $true
+    } catch { return $false }
+}
 
-try {
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = "$SPLATRIX_HOME\bin\splatrix.bat"
-    $shortcut.WorkingDirectory = $SPLATRIX_HOME
-    $shortcut.Description = "Splatrix - Video to 3D Gaussian Splats"
-    $shortcut.Save()
-    Write-Ok "Desktop shortcut created"
-} catch {
-    Write-Warn "Could not create desktop shortcut"
+# Start Menu (standard location — always created)
+$startMenuDir = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+if (New-Shortcut "$startMenuDir\Splatrix.lnk") {
+    Write-Ok "Start Menu shortcut created"
+} else {
+    Write-Warn "Could not create Start Menu shortcut"
+}
+
+# Desktop (optional — ask user)
+$addDesktop = Read-Host "Add desktop shortcut? (Y/n)"
+if ($addDesktop -ne "n" -and $addDesktop -ne "N") {
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    if (New-Shortcut "$desktopPath\Splatrix.lnk") {
+        Write-Ok "Desktop shortcut created"
+    } else {
+        Write-Warn "Could not create desktop shortcut"
+    }
 }
 
 # ── Verify ───────────────────────────────────────────────────────
@@ -276,5 +292,4 @@ Write-Host "|                                                      |" -Foregroun
 Write-Host "+======================================================+" -ForegroundColor Green
 Write-Host ""
 Write-Host "Everything installed in: $SPLATRIX_HOME"
-Write-Host "Nothing outside this directory was modified (except desktop shortcut)."
 Write-Host ""
