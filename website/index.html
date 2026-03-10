@@ -557,6 +557,7 @@
 precision mediump float;
 uniform float t;
 uniform vec2 r;
+uniform float scroll;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -590,7 +591,7 @@ float grid(vec2 p, float spacing, float thickness) {
 void main() {
     vec2 uv = gl_FragCoord.xy / r;
     float aspect = r.x / r.y;
-    vec2 p = vec2(uv.x * aspect, uv.y);
+    vec2 p = vec2(uv.x * aspect, uv.y + scroll);
 
     // Very subtle drifting gaussian blobs
     float s = t * 0.06;
@@ -693,10 +694,16 @@ void main() {
 
     var tLoc = gl.getUniformLocation(prog, 't');
     var rLoc = gl.getUniformLocation(prog, 'r');
+    var sLoc = gl.getUniformLocation(prog, 'scroll');
+    var scrollY = 0;
+
+    window.addEventListener('scroll', function() { scrollY = window.pageYOffset; }, {passive: true});
 
     function frame(now) {
+        var scrollNorm = scrollY / (document.body.scrollHeight - window.innerHeight || 1);
         gl.uniform1f(tLoc, now * 0.001);
         gl.uniform2f(rLoc, canvas.width, canvas.height);
+        gl.uniform1f(sLoc, scrollNorm * 1.5);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         requestAnimationFrame(frame);
     }
