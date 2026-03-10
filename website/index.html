@@ -23,7 +23,7 @@
             --text-muted: #71717a;
             --accent: #6366f1;
             --accent-hover: #818cf8;
-            --success: #22c55e;
+            --success: #34d399;
             --radius: 12px;
         }
 
@@ -277,11 +277,49 @@
             border-top: 1px solid var(--border);
         }
 
-        .install-note {
+        .install-row .copy-btn {
+            background: none;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: #525268;
+            cursor: pointer;
+            padding: 4px 6px;
+            display: flex;
+            align-items: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .install-row .copy-btn:hover {
+            color: var(--text);
+            border-color: var(--border);
+            background: rgba(255,255,255,0.04);
+        }
+
+        .install-row .copy-btn.copied {
+            color: var(--success);
+            border-color: rgba(52, 211, 153, 0.3);
+        }
+
+        .copy-tooltip {
+            position: absolute;
+            right: -4px;
+            top: -28px;
+            font-family: 'Inter', sans-serif;
             font-size: 11px;
-            color: #3f3f50;
-            margin-top: 14px;
-            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 8px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+        }
+
+        .install-row .copy-btn.copied .copy-tooltip {
+            opacity: 1;
         }
 
         /* ── Platform tabs ── */
@@ -571,19 +609,26 @@
         </div>
         <div id="platform-unix" class="platform-content active">
             <div class="install-body">
-                <div class="install-row"><span class="label">Install</span> <span class="command">curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash</span></div>
-                <div class="install-row"><span class="label">Run</span> <span class="command">~/.splatrix/bin/splatrix</span></div>
+                <div class="install-row"><span class="label">Install</span> <span class="command" data-cmd="curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash">curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash</span><button class="copy-btn" onclick="copyCmd(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="copy-tooltip">Copied</span></button></div>
+                <div class="install-row"><span class="label">Run</span> <span class="command" data-cmd="~/.splatrix/bin/splatrix">~/.splatrix/bin/splatrix</span><button class="copy-btn" onclick="copyCmd(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="copy-tooltip">Copied</span></button></div>
             </div>
         </div>
         <div id="platform-windows" class="platform-content">
             <div class="install-body">
-                <div class="install-row"><span class="label">Install</span> <span class="command">irm https://mutexre.github.io/splatrix/install.ps1 | iex</span></div>
-                <div class="install-row"><span class="label">Run</span> <span class="command">~\.splatrix\bin\splatrix.bat</span></div>
+                <div class="install-row"><span class="label">Install</span> <span class="command" data-cmd="irm https://mutexre.github.io/splatrix/install.ps1 | iex">irm https://mutexre.github.io/splatrix/install.ps1 | iex</span><button class="copy-btn" onclick="copyCmd(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="copy-tooltip">Copied</span></button></div>
+                <div class="install-row"><span class="label">Run</span> <span class="command" data-cmd="~\.splatrix\bin\splatrix.bat">~\.splatrix\bin\splatrix.bat</span><button class="copy-btn" onclick="copyCmd(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="copy-tooltip">Copied</span></button></div>
             </div>
         </div>
     </div>
 
     <script>
+    function copyCmd(btn) {
+        var cmd = btn.previousElementSibling.getAttribute('data-cmd');
+        navigator.clipboard.writeText(cmd).then(function() {
+            btn.classList.add('copied');
+            setTimeout(function() { btn.classList.remove('copied'); }, 1200);
+        });
+    }
     function switchPlatform(platform) {
         document.querySelectorAll('.platform-tab').forEach(function(t) {
             t.classList.toggle('active', t.getAttribute('data-platform') === platform);
