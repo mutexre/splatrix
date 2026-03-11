@@ -202,6 +202,7 @@
             line-height: 1.7;
             position: relative;
             padding: 6px 14px;
+            --plaque-radius: 12px;
         }
 
         .hero p::before {
@@ -212,8 +213,8 @@
             -webkit-backdrop-filter: blur(16px);
             background: rgba(10, 10, 15, 0.25);
             box-shadow: 0 0 40px 20px rgba(10, 10, 15, 0.25);
+            border-radius: var(--plaque-radius);
             z-index: -1;
-            clip-path: url(#superellipse);
         }
 
         .hero-buttons {
@@ -589,15 +590,6 @@
     </style>
 </head>
 <body>
-
-<!-- Superellipse clip path — rounded rect with controllable corner radius -->
-<svg width="0" height="0" style="position:absolute">
-    <defs>
-        <clipPath id="superellipse" clipPathUnits="objectBoundingBox">
-            <rect x="0" y="0" width="1" height="1" rx="0.03" ry="0.03"/>
-        </clipPath>
-    </defs>
-</svg>
 
 <!-- WebGL Plasma Background -->
 <canvas id="plasma-bg"></canvas>
@@ -1044,13 +1036,13 @@ void main() {
             // Superellipse curvature
             html += '<div style="margin:10px 0 8px;border-top:1px solid #333"></div>';
             html += '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Plaque Shape</div>';
-            var sqNorm = Math.round(squircleR / 0.5 * 100);
+            var sqNorm = Math.round(squircleR / 60 * 100);
             html += '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
                 '<span style="width:64px;flex-shrink:0">Curve</span>' +
                 '<input type="range" min="0" max="100" value="' + sqNorm + '" ' +
                 'style="flex:1;accent-color:#0891b2;height:4px" ' +
                 'oninput="window._squircleSlider(this.value,this)">' +
-                '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + squircleR.toFixed(3) + '</span></label>';
+                '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + squircleR + 'px</span></label>';
             panel.innerHTML = html;
             // Bind combo
             panel.querySelector('#algo-select').addEventListener('change', function() {
@@ -1098,18 +1090,18 @@ void main() {
             el.parentElement.querySelector('.val').textContent = v.toFixed(2);
         };
 
-        // Superellipse curvature slider — controls corner radius of clip rect
-        var squircleR = 0.03; // corner radius in objectBoundingBox units (0 = rect, 0.5 = pill)
-        function updateSuperellipse(r) {
-            squircleR = r;
-            var rectEl = document.querySelector('#superellipse rect');
-            if (rectEl) { rectEl.setAttribute('rx', r); rectEl.setAttribute('ry', r); }
+        // Plaque corner radius slider — controls border-radius in pixels (0 = rect, 60 = pill)
+        var squircleR = 12;
+        function updateSuperellipse(px) {
+            squircleR = px;
+            var heroP = document.querySelector('.hero p');
+            if (heroP) heroP.style.setProperty('--plaque-radius', px + 'px');
         }
 
         window._squircleSlider = function(val, el) {
-            var v = (val / 100) * 0.5; // range 0.00 .. 0.50
+            var v = Math.round((val / 100) * 60); // range 0 .. 60 px
             updateSuperellipse(v);
-            el.parentElement.querySelector('.val').textContent = v.toFixed(3);
+            el.parentElement.querySelector('.val').textContent = v + 'px';
         };
 
         render();
