@@ -199,6 +199,12 @@
             max-width: 600px;
             margin: 0 auto 40px;
             line-height: 1.7;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(10, 10, 15, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 20px 28px;
         }
 
         .hero-buttons {
@@ -600,14 +606,20 @@ float isPrime(float n) {
     return 1.0;
 }
 
-// Per-cell independent primality: each cell hashes its position with a
-// time epoch to produce a different candidate integer each cycle.
-// Cells have unique phase offsets so they don't all flip at once.
-float cellIndex(vec2 cell) {
-    float cellPhase = hash(cell * 31.17);          // unique per cell
-    float epoch = floor(t * 0.35 + cellPhase);     // staggered ticks
-    float h = hash(cell + epoch * 7.13);           // new number each epoch
-    return 2.0 + floor(h * 497.0);                 // range [2..499]
+// Per-cell smooth primality: crossfades between previous and current epoch
+// so cells gradually brighten/dim instead of snapping.
+float smoothPrime(vec2 cell) {
+    float cellPhase = hash(cell * 31.17);
+    float rawEpoch = t * 0.35 + cellPhase;
+    float epoch = floor(rawEpoch);
+    float fade = fract(rawEpoch);
+
+    float hCurr = hash(cell + epoch * 7.13);
+    float hPrev = hash(cell + (epoch - 1.0) * 7.13);
+    float primeCurr = isPrime(2.0 + floor(hCurr * 497.0));
+    float primePrev = isPrime(2.0 + floor(hPrev * 497.0));
+
+    return mix(primePrev, primeCurr, smoothstep(0.0, 0.4, fade));
 }
 
 // Grid line distance
@@ -622,10 +634,10 @@ float edgePrime(vec2 p, float spacing) {
     vec2 f = fract(p / spacing);
     // Horizontal edge (near y grid line)
     float hy = abs(f.y - 0.5);
-    float hp = max(isPrime(cellIndex(cell)), isPrime(cellIndex(cell + vec2(0.0, -1.0))));
+    float hp = max(smoothPrime(cell), smoothPrime(cell + vec2(0.0, -1.0)));
     // Vertical edge (near x grid line)
     float hx = abs(f.x - 0.5);
-    float vp = max(isPrime(cellIndex(cell)), isPrime(cellIndex(cell + vec2(-1.0, 0.0))));
+    float vp = max(smoothPrime(cell), smoothPrime(cell + vec2(-1.0, 0.0)));
     // Blend: closer to which edge?
     float edgeX = 1.0 - smoothstep(0.0, 0.08, hx);
     float edgeY = 1.0 - smoothstep(0.0, 0.08, hy);
@@ -664,8 +676,7 @@ void main() {
     float spacing = 0.06;
     vec2 cell = floor(p / spacing);
     vec2 cellCenter = (cell + 0.5) * spacing;
-    float ci = cellIndex(cell);
-    float prime = isPrime(ci);
+    float prime = smoothPrime(cell);
 
     // Grid lines — base
     float gl = gridLine(p, spacing, 0.001);
@@ -681,8 +692,8 @@ void main() {
     // Node primality: intersection is where 4 cells meet — bright if any is prime
     vec2 nc = floor(nearest / spacing);
     float nodePrime = max(
-        max(isPrime(cellIndex(nc)), isPrime(cellIndex(nc - vec2(1.0, 0.0)))),
-        max(isPrime(cellIndex(nc - vec2(0.0, 1.0))), isPrime(cellIndex(nc - vec2(1.0, 1.0)))))
+        max(smoothPrime(nc), smoothPrime(nc - vec2(1.0, 0.0))),
+        max(smoothPrime(nc - vec2(0.0, 1.0)), smoothPrime(nc - vec2(1.0, 1.0))))
     ;
 
     // Cell interior: prime cells get a faint fill
