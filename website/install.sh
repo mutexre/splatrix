@@ -207,18 +207,42 @@ info "Installing Nerfstudio... (may take a few minutes)"
 pip install nerfstudio -q 2>/dev/null
 ok "Nerfstudio installed"
 
-# Patch nerfstudio for COLMAP 3.11+ (renamed SiftExtraction→FeatureExtraction)
+# Patch nerfstudio colmap_utils to be version-aware (SiftExtraction vs FeatureExtraction)
 COLMAP_UTILS="$(python -c 'import nerfstudio.process_data.colmap_utils as m; print(m.__file__)')"
-if [ -f "$COLMAP_UTILS" ] && grep -q "SiftExtraction.use_gpu" "$COLMAP_UTILS"; then
+if [ -f "$COLMAP_UTILS" ] && ! grep -q "_extract_gpu_flag" "$COLMAP_UTILS"; then
     python -c "
-import pathlib, re
+import pathlib
 p = pathlib.Path('$COLMAP_UTILS')
 t = p.read_text()
-t = t.replace('SiftExtraction.use_gpu', 'FeatureExtraction.use_gpu')
-t = t.replace('SiftMatching.use_gpu', 'FeatureMatching.use_gpu')
-p.write_text(t)
+
+# Undo any previous blanket rename (FeatureExtraction->SiftExtraction) so we start clean
+t = t.replace('FeatureExtraction.use_gpu', 'SiftExtraction.use_gpu')
+t = t.replace('FeatureMatching.use_gpu', 'SiftMatching.use_gpu')
+
+# Insert version-gated flag variables after 'colmap_version = get_colmap_version(colmap_cmd)'
+old = '    colmap_version = get_colmap_version(colmap_cmd)\n'
+new = '''    colmap_version = get_colmap_version(colmap_cmd)
+
+    # COLMAP 3.11+ renamed SiftExtraction/SiftMatching -> FeatureExtraction/FeatureMatching
+    from packaging.version import Version as _V
+    if colmap_version >= _V(\"3.11\"):
+        _extract_gpu_flag = f\"--FeatureExtraction.use_gpu {int(gpu)}\"
+        _match_gpu_flag = f\"--FeatureMatching.use_gpu {int(gpu)}\"
+    else:
+        _extract_gpu_flag = f\"--SiftExtraction.use_gpu {int(gpu)}\"
+        _match_gpu_flag = f\"--SiftMatching.use_gpu {int(gpu)}\"
+'''
+
+if old in t:
+    t = t.replace(old, new, 1)
+    t = t.replace('f\"--SiftExtraction.use_gpu {int(gpu)}\"', '_extract_gpu_flag')
+    t = t.replace('f\"--SiftMatching.use_gpu {int(gpu)}\"', '_match_gpu_flag')
+    p.write_text(t)
+    print('Patched successfully')
+else:
+    print('Patch point not found — may already be patched')
 "
-    ok "Patched nerfstudio for COLMAP 3.11+"
+    ok "Patched nerfstudio for COLMAP version compatibility"
 fi
 
 # Splatrix
