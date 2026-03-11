@@ -202,9 +202,11 @@
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             background: rgba(10, 10, 15, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 12px;
-            padding: 20px 28px;
+            border: none;
+            border-radius: 16px;
+            padding: 12px 24px;
+            -webkit-mask-image: radial-gradient(ellipse 100% 100% at center, black 60%, transparent 100%);
+            mask-image: radial-gradient(ellipse 100% 100% at center, black 60%, transparent 100%);
         }
 
         .hero-buttons {
@@ -546,6 +548,21 @@
 
         footer a:hover { text-decoration: underline; }
 
+        /* ── Debug Panel ── */
+        #debug-panel {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            z-index: 9999;
+            background: rgba(10, 10, 15, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 12px 16px;
+            min-width: 200px;
+            font-family: 'Inter', monospace;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 640px) {
             .nav-links { display: none; }
@@ -564,6 +581,9 @@ precision mediump float;
 uniform float t;
 uniform vec2 r;
 uniform float scroll;
+uniform float uCellOpacity;
+uniform float uEdgeOpacity;
+uniform float uNodeOpacity;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -694,13 +714,14 @@ void main() {
     // Edge intensity driven by prime adjacency
     float ep = edgePrime(p, spacing);
 
-    // Node (intersection) glow
-    vec2 nearest = floor(p / spacing + 0.5) * spacing;
+    // Node (intersection) glow — use integer coords to avoid float precision quadrant splits
+    vec2 nodeCoord = floor(p / spacing + 0.5);
+    vec2 nearest = nodeCoord * spacing;
     float distToNode = length(p - nearest);
     float nodeGlow = exp(-distToNode * distToNode * 8000.0);
 
     // Node primality: driven by LAYER_NODE — independent from cells and edges
-    vec2 nc = floor(nearest / spacing);
+    vec2 nc = nodeCoord;
     float nodePrime = max(
         max(smoothPrime(nc, LAYER_NODE), smoothPrime(nc - vec2(1.0, 0.0), LAYER_NODE)),
         max(smoothPrime(nc - vec2(0.0, 1.0), LAYER_NODE), smoothPrime(nc - vec2(1.0, 1.0), LAYER_NODE)))
@@ -718,22 +739,23 @@ void main() {
     // Blob influence for coloring
     float blobInfluence = g1 + g2 + g3 + g4;
 
-    // Per-element colors — each derived from its own position
+    // Per-element colors — each derived from its own position to avoid quadrant splits
     vec3 gridBase  = vec3(0.06, 0.09, 0.10);
     vec3 cellColor = mix(teal * 0.5, orange * 0.5, hash(cell));
-    vec3 nodeColor = mix(teal * 0.6, orange * 0.6, hash(nc * 17.3));
+    vec3 edgeColor = mix(teal * 0.4, orange * 0.4, hash(cell * 0.01 + 77.7));
+    vec3 nodeColor = mix(teal * 0.6, orange * 0.6, hash(nodeCoord * 17.3));
 
     // 1. Cell interior soft glow (bottom layer)
-    col += cellColor * cellFill * (0.08 + primePulse * 0.15);
-    col += cellColor * cellFill * blobInfluence * 0.15;
+    col += cellColor * cellFill * (0.08 + primePulse * 0.15) * uCellOpacity;
+    col += cellColor * cellFill * blobInfluence * 0.15 * uCellOpacity;
 
     // 2. Grid lines and edges (middle layer)
-    col += gridBase * gl * 0.2;
-    col += cellColor * gl * ep * 0.3;
+    col += gridBase * gl * 0.2 * uEdgeOpacity;
+    col += edgeColor * gl * ep * 0.3 * uEdgeOpacity;
 
     // 3. Node dots (top layer — single consistent color per node)
-    col += gridBase * nodeGlow * 0.3;
-    col += nodeColor * nodeGlow * nodePrime * (0.4 + pulse * 0.5);
+    col += gridBase * nodeGlow * 0.3 * uNodeOpacity;
+    col += nodeColor * nodeGlow * nodePrime * (0.4 + pulse * 0.5) * uNodeOpacity;
 
     // Vignette
     float vig = 1.0 - dot((uv - 0.5) * 1.4, (uv - 0.5) * 1.4);
@@ -794,7 +816,13 @@ void main() {
     var tLoc = gl.getUniformLocation(prog, 't');
     var rLoc = gl.getUniformLocation(prog, 'r');
     var sLoc = gl.getUniformLocation(prog, 'scroll');
+    var cellLoc = gl.getUniformLocation(prog, 'uCellOpacity');
+    var edgeLoc = gl.getUniformLocation(prog, 'uEdgeOpacity');
+    var nodeLoc = gl.getUniformLocation(prog, 'uNodeOpacity');
     var scrollY = 0;
+
+    // Layer opacity values (controlled by debug sliders)
+    var layerOpacity = { cell: 1.0, edge: 1.0, node: 1.0 };
 
     window.addEventListener('scroll', function() { scrollY = window.pageYOffset; }, {passive: true});
 
@@ -803,10 +831,48 @@ void main() {
         gl.uniform1f(tLoc, now * 0.001);
         gl.uniform2f(rLoc, canvas.width, canvas.height);
         gl.uniform1f(sLoc, -scrollNorm * 1.5);
+        gl.uniform1f(cellLoc, layerOpacity.cell);
+        gl.uniform1f(edgeLoc, layerOpacity.edge);
+        gl.uniform1f(nodeLoc, layerOpacity.node);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
+
+    // ── Debug overlay ──
+    (function buildDebugPanel() {
+        var panel = document.createElement('div');
+        panel.id = 'debug-panel';
+        panel.innerHTML =
+            '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Grid Layers</div>' +
+            makeSlider('Cells', 'cell') +
+            makeSlider('Edges', 'edge') +
+            makeSlider('Nodes', 'node');
+        document.body.appendChild(panel);
+
+        function makeSlider(label, key) {
+            return '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
+                '<span style="width:42px">' + label + '</span>' +
+                '<input type="range" min="0" max="100" value="100" ' +
+                'style="flex:1;accent-color:#0891b2;height:4px" ' +
+                'oninput="window._gridOpacity(\'' + key + '\', this.value)">' +
+                '<span class="val" style="width:28px;text-align:right;font-variant-numeric:tabular-nums">1.0</span></label>';
+        }
+
+        window._gridOpacity = function(key, val) {
+            var v = val / 100;
+            layerOpacity[key] = v;
+            var labels = panel.querySelectorAll('label');
+            var idx = key === 'cell' ? 0 : key === 'edge' ? 1 : 2;
+            labels[idx].querySelector('.val').textContent = v.toFixed(2);
+        };
+
+        // Toggle with ` key
+        var visible = true;
+        document.addEventListener('keydown', function(e) {
+            if (e.key === '`') { visible = !visible; panel.style.display = visible ? '' : 'none'; }
+        });
+    })();
 })();
 </script>
 
