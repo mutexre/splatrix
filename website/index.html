@@ -1124,8 +1124,8 @@ void main() {
             if (before) before.style.setProperty('--se-clip', buildSuperellipsePolygon(n));
         }
 
-        // Apply initial superellipse on load
-        setTimeout(function() { updateSuperellipse(superN); }, 0);
+        // Apply initial values on load
+        setTimeout(function() { updateSuperellipse(superN); updatePlaqueMargin(plaqueMargin); }, 0);
 
         window._squircleSlider = function(val, el) {
             var v = 2 + (val / 100) * 18; // range 2.0 (ellipse) .. 20.0 (≈rect)
