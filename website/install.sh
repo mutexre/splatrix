@@ -169,11 +169,18 @@ if [[ -n "$CUDA_VERSION" ]]; then
     pip install torch torchvision \
         --index-url "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}" \
         -q 2>/dev/null
+    ok "PyTorch installed"
+
+    # CUDA toolkit (nvcc) — needed by gsplat for JIT kernel compilation
+    info "Installing CUDA toolkit (for gsplat JIT)..."
+    "$MAMBA_EXE" install -p "$ENV_PREFIX" -c conda-forge cuda-nvcc "cuda-version=${CUDA_VERSION}.*" -y -q > /dev/null 2>&1 \
+        && ok "CUDA toolkit installed" \
+        || warn "CUDA toolkit install failed — gsplat may fall back to CPU"
 else
     info "Installing PyTorch (CPU/MPS)... (may take a few minutes)"
     pip install torch torchvision -q 2>/dev/null
+    ok "PyTorch installed"
 fi
-ok "PyTorch installed"
 
 # COLMAP + FFmpeg
 info "Installing COLMAP and FFmpeg..."
