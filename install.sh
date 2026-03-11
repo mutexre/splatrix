@@ -13,7 +13,7 @@ set -euo pipefail
 #    ~/.splatrix/
 #    ├── bin/micromamba
 #    ├── bin/splatrix       ← launcher script
-#    ├── envs/              ← micromamba root (envs + packages)
+#    ├── envs/              ← conda environments (created by micromamba)
 #    ├── src/               ← splatrix source code
 #    └── splatrix.desktop   ← Linux desktop entry (optional)
 #
@@ -110,7 +110,7 @@ ok "Install directory: $SPLATRIX_HOME"
 step "micromamba"
 
 MAMBA_EXE="$SPLATRIX_HOME/bin/micromamba"
-export MAMBA_ROOT_PREFIX="$SPLATRIX_HOME/envs"
+export MAMBA_ROOT_PREFIX="$SPLATRIX_HOME"
 
 if [[ -f "$MAMBA_EXE" ]]; then
     ok "micromamba already installed"
@@ -213,7 +213,7 @@ cat > "$SPLATRIX_HOME/bin/splatrix" << 'LAUNCHER_OUTER'
 
 SPLATRIX_HOME="${SPLATRIX_HOME:-$HOME/.splatrix}"
 MAMBA_EXE="$SPLATRIX_HOME/bin/micromamba"
-export MAMBA_ROOT_PREFIX="$SPLATRIX_HOME/envs"
+export MAMBA_ROOT_PREFIX="$SPLATRIX_HOME"
 
 [[ -f "$MAMBA_EXE" ]] || { echo "Error: micromamba not found. Run the installer."; exit 1; }
 
