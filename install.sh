@@ -200,6 +200,20 @@ info "Installing Nerfstudio... (may take a few minutes)"
 pip install nerfstudio -q 2>/dev/null
 ok "Nerfstudio installed"
 
+# Patch nerfstudio for COLMAP 3.11+ (renamed SiftExtraction→FeatureExtraction)
+COLMAP_UTILS="$(python -c 'import nerfstudio.process_data.colmap_utils as m; print(m.__file__)')"
+if [ -f "$COLMAP_UTILS" ] && grep -q "SiftExtraction.use_gpu" "$COLMAP_UTILS"; then
+    python -c "
+import pathlib, re
+p = pathlib.Path('$COLMAP_UTILS')
+t = p.read_text()
+t = t.replace('SiftExtraction.use_gpu', 'FeatureExtraction.use_gpu')
+t = t.replace('SiftMatching.use_gpu', 'FeatureMatching.use_gpu')
+p.write_text(t)
+"
+    ok "Patched nerfstudio for COLMAP 3.11+"
+fi
+
 # Splatrix
 info "Installing Splatrix..."
 pip install -e . -q 2>/dev/null
