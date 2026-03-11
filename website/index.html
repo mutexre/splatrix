@@ -1034,14 +1034,23 @@ void main() {
             html += makeLayerSlider('Nodes', 'node');
             // Superellipse curvature
             html += '<div style="margin:10px 0 8px;border-top:1px solid #333"></div>';
-            html += '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Superellipse</div>';
-            var sqNorm = Math.round((superN - 2) / 18 * 100);
-            html += '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
-                '<span style="width:64px;flex-shrink:0">n</span>' +
-                '<input type="range" min="0" max="100" value="' + sqNorm + '" ' +
-                'style="flex:1;accent-color:#0891b2;height:4px" ' +
-                'oninput="window._squircleSlider(this.value,this)">' +
-                '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + superN.toFixed(1) + '</span></label>';
+            html += '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Superellipse |x/a|<sup>n</sup>+|y/b|<sup>n</sup>=1</div>';
+            var seDefs = [
+                { key:'n', label:'n', min:1, max:20, step:0.1, fmt: function(v){return v.toFixed(1);} },
+                { key:'a', label:'a', min:0.2, max:1.5, step:0.01, fmt: function(v){return v.toFixed(2);} },
+                { key:'b', label:'b', min:0.2, max:1.5, step:0.01, fmt: function(v){return v.toFixed(2);} }
+            ];
+            for (var si = 0; si < seDefs.length; si++) {
+                var sd = seDefs[si];
+                var sv = seParams[sd.key];
+                var sn = Math.round((sv - sd.min) / (sd.max - sd.min) * 100);
+                html += '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
+                    '<span style="width:64px;flex-shrink:0">' + sd.label + '</span>' +
+                    '<input type="range" min="0" max="100" value="' + sn + '" ' +
+                    'style="flex:1;accent-color:#0891b2;height:4px" ' +
+                    'oninput="window._seParam(\'' + sd.key + '\',' + sd.min + ',' + sd.max + ',' + sd.step + ',this.value,this)">' +
+                    '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + sd.fmt(sv) + '</span></label>';
+            }
             var mNorm = Math.round(plaqueMargin / 60 * 100);
             html += '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
                 '<span style="width:64px;flex-shrink:0">Margin</span>' +
@@ -1098,40 +1107,41 @@ void main() {
 
         // True superellipse: |x/a|^n + |y/b|^n = 1
         // n=2 → ellipse, n=4 → squircle (iOS), n→∞ → rectangle
-        var superN = 8.5;
-        function buildSuperellipsePolygon(n, numPoints) {
+        // a,b = semi-axis scale (1.0 = fill bounding box)
+        var seParams = { n: 8.5, a: 1.0, b: 1.0 };
+
+        function buildSuperellipsePolygon(n, a, b, numPoints) {
             numPoints = numPoints || 120;
             var pts = [];
             for (var i = 0; i <= numPoints; i++) {
                 var angle = (i / numPoints) * 2 * Math.PI;
                 var ca = Math.cos(angle);
                 var sa = Math.sin(angle);
-                // Superellipse parametric: x = sign(cos θ)·|cos θ|^(2/n), y = sign(sin θ)·|sin θ|^(2/n)
                 var exp = 2.0 / n;
-                var x = (ca < 0 ? -1 : 1) * Math.pow(Math.abs(ca), exp);
-                var y = (sa < 0 ? -1 : 1) * Math.pow(Math.abs(sa), exp);
-                // Map from [-1,1] to [0%,100%]
-                var px = ((x + 1) / 2 * 100).toFixed(3);
-                var py = ((y + 1) / 2 * 100).toFixed(3);
+                var x = a * (ca < 0 ? -1 : 1) * Math.pow(Math.abs(ca), exp);
+                var y = b * (sa < 0 ? -1 : 1) * Math.pow(Math.abs(sa), exp);
+                // Map from [-a..a, -b..b] to [0%,100%]
+                var px = ((x / a + 1) / 2 * 100).toFixed(3);
+                var py = ((y / b + 1) / 2 * 100).toFixed(3);
                 pts.push(px + '% ' + py + '%');
             }
             return 'polygon(' + pts.join(', ') + ')';
         }
 
-        function updateSuperellipse(n) {
-            superN = n;
-            var before = document.querySelector('.hero p');
-            if (before) before.style.setProperty('--se-clip', buildSuperellipsePolygon(n));
+        function applySuperellipse() {
+            var el = document.querySelector('.hero p');
+            if (el) el.style.setProperty('--se-clip', buildSuperellipsePolygon(seParams.n, seParams.a, seParams.b));
         }
 
         // Apply initial values on load
-        setTimeout(function() { updateSuperellipse(superN); updatePlaqueMargin(plaqueMargin); }, 0);
+        setTimeout(function() { applySuperellipse(); updatePlaqueMargin(plaqueMargin); }, 0);
 
-        window._squircleSlider = function(val, el) {
-            var v = 2 + (val / 100) * 18; // range 2.0 (ellipse) .. 20.0 (≈rect)
-            v = parseFloat(v.toFixed(1));
-            updateSuperellipse(v);
-            el.parentElement.querySelector('.val').textContent = v.toFixed(1);
+        window._seParam = function(key, min, max, step, val, el) {
+            var raw = min + (val / 100) * (max - min);
+            var v = step >= 1 ? Math.round(raw) : parseFloat(raw.toFixed(2));
+            seParams[key] = v;
+            applySuperellipse();
+            el.parentElement.querySelector('.val').textContent = step >= 1 ? v.toString() : v.toFixed(2);
         };
 
         // Plaque margin — controls inset of ::before (space around text)
