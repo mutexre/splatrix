@@ -877,8 +877,9 @@ void main() {
             labels[idx].querySelector('.val').textContent = v.toFixed(2);
         };
 
-        // Toggle with ` key
-        var visible = true;
+        // Hidden by default, toggle with ` key
+        var visible = false;
+        panel.style.display = 'none';
         document.addEventListener('keydown', function(e) {
             if (e.key === '`') { visible = !visible; panel.style.display = visible ? '' : 'none'; }
         });
