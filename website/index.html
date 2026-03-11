@@ -210,7 +210,7 @@
 
         /* ── Install snippet ── */
         .install-snippet {
-            max-width: 740px;
+            max-width: 680px;
             margin: 48px auto 0;
             background: var(--surface);
             border: 1px solid var(--border);
@@ -635,7 +635,7 @@ void main() {
     vec2 p = vec2(uv.x * aspect, uv.y + scroll);
 
     // Subtle drifting gaussian blobs
-    float s = t * 0.06;
+    float s = t * 0.2;
     vec2 c1 = vec2(0.5 * aspect + sin(s * 1.1) * 0.4, 0.5 + cos(s * 0.9) * 0.3);
     vec2 c2 = vec2(0.5 * aspect + cos(s * 0.7) * 0.5, 0.5 + sin(s * 1.3) * 0.35);
     vec2 c3 = vec2(0.5 * aspect + sin(s * 0.5 + 2.0) * 0.45, 0.5 + cos(s * 1.1 + 1.0) * 0.3);
@@ -687,7 +687,7 @@ void main() {
     float cellFill = exp(-cellDist * cellDist * 600.0) * prime;
 
     // Time-driven pulse: prime cells/edges pulse at different phases
-    float phase = fract(ci * 0.618033988 + t * 0.08);
+    float phase = fract(ci * 0.618033988 + t * 0.25);
     float pulse = smoothstep(0.0, 0.15, phase) * smoothstep(0.5, 0.15, phase);
     float primePulse = prime * pulse;
 
