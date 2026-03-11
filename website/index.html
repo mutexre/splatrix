@@ -200,17 +200,17 @@
             margin: 0 auto 40px;
             line-height: 1.7;
             position: relative;
-            padding: 12px 24px;
+            padding: 6px 14px;
         }
 
         .hero p::before {
             content: '';
             position: absolute;
-            inset: -20px -30px;
+            inset: -8px -14px;
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             background: rgba(10, 10, 15, 0.25);
-            box-shadow: 0 0 50px 30px rgba(10, 10, 15, 0.25);
+            box-shadow: 0 0 40px 20px rgba(10, 10, 15, 0.25);
             z-index: -1;
             clip-path: url(#superellipse);
         }
@@ -593,7 +593,7 @@
 <svg width="0" height="0" style="position:absolute">
     <defs>
         <clipPath id="superellipse" clipPathUnits="objectBoundingBox">
-            <path d="M 0.5 0 C 0.96 0, 1 0.04, 1 0.5 C 1 0.96, 0.96 1, 0.5 1 C 0.04 1, 0 0.96, 0 0.5 C 0 0.04, 0.04 0, 0.5 0 Z"/>
+            <path d="M 0.5 0 C 0.99 0, 1 0.01, 1 0.5 C 1 0.99, 0.99 1, 0.5 1 C 0.01 1, 0 0.99, 0 0.5 C 0 0.01, 0.01 0, 0.5 0 Z"/>
         </clipPath>
     </defs>
 </svg>
@@ -752,17 +752,16 @@ float ulamIndex(vec2 sc) {
     return base + 6.0 * k + (x + k);
 }
 
-float algoUlamSpiral(vec2 p) {
-    // uParam2 = density: spiral cells per unit in world space
-    float density = max(1.0, uParam2);
-    // Center spiral on screen (p is in world space: x=[0..aspect], y=[0..1]+scroll)
+float algoUlamSpiral(vec2 cell) {
+    // Use the rendering grid cell directly so spiral aligns with visible grid
+    // Center the spiral on the middle of the screen (in cell coords)
     float aspect = r.x / r.y;
-    vec2 screenCenter = vec2(0.5 * aspect, 0.5);
-    // Optional slow drift around center
+    float spacing = 0.06;
+    vec2 centerCell = floor(vec2(0.5 * aspect, 0.5 + scroll) / spacing);
+    // Optional slow drift
     float drift = uParam1;
-    vec2 driftOffset = vec2(sin(t * 0.08) * drift, cos(t * 0.11) * drift);
-    // Compute spiral cell: center on screen, then apply density
-    vec2 sc = floor((p - screenCenter - driftOffset) * density + 0.5);
+    vec2 driftOffset = floor(vec2(sin(t * 0.08) * drift, cos(t * 0.11) * drift));
+    vec2 sc = cell - centerCell - driftOffset;
     float idx = ulamIndex(sc);
     return isPrime(idx);
 }
@@ -776,17 +775,16 @@ float evalAlgo(float h, vec2 cell, vec2 p) {
     if (uAlgo < 2.5) return algoFibonacci(h);
     if (uAlgo < 3.5) return algoDigitalRoot(h);
     if (uAlgo < 4.5) return algoPowerMod(h);
-    return algoUlamSpiral(p);
+    return algoUlamSpiral(cell);
 }
 
 // ═══════════════════════════════════════════════════
 // Smooth activation with per-layer epoch separation
-// Spatial algorithms (Ulam) bypass the epoch system
 // ═══════════════════════════════════════════════════
 float smoothActivation(vec2 cell, float layer, vec2 p) {
-    // Spatial algorithms — continuous motion, no epoch crossfade needed
+    // Ulam spiral: purely spatial, bypass epoch crossfade
     if (uAlgo > 4.5) {
-        return evalAlgo(0.0, cell, p);
+        return algoUlamSpiral(cell);
     }
 
     // Stochastic algorithms — per-cell epoch crossfade
@@ -993,8 +991,8 @@ void main() {
                                  p2: {label:'Range',     min:50, max:999, def:500, step:1} },
         { name: 'Power Mod',    p1: {label:'Modulus',   min:2,  max:97,  def:17,  step:1},
                                  p2: {label:'Threshold', min:1,  max:30,  def:3,   step:1} },
-        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:60,  def:0,   step:1},
-                                 p2: {label:'Density',   min:5,  max:50,  def:20,  step:1} }
+        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:30,  def:0,   step:1},
+                                 p2: {label:'(unused)',  min:0,  max:1,   def:0,   step:1} }
     ];
 
     var algoState = { algo: 0, p1: ALGOS[0].p1.def, p2: ALGOS[0].p2.def };
