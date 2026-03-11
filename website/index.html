@@ -606,21 +606,31 @@ float isPrime(float n) {
     return 1.0;
 }
 
-// Per-cell smooth primality: crossfades between previous and current epoch
-// so cells gradually brighten/dim instead of snapping.
-float smoothPrime(vec2 cell) {
-    float cellPhase = hash(cell * 31.17);
-    float rawEpoch = t * 0.35 + cellPhase;
+// Per-cell smooth primality with layer separation.
+// 'layer' param gives each grid element (cells, edges, nodes) its own
+// epoch speed, phase seed, and hash salt — fully independent evolution.
+float smoothPrime(vec2 cell, float layer) {
+    float phaseSeed = 31.17 + layer * 53.0;
+    float hashSalt  = 7.13  + layer * 19.0;
+    float speed     = 0.30  + layer * 0.08;
+
+    float cellPhase = hash(cell * phaseSeed);
+    float rawEpoch = t * speed + cellPhase;
     float epoch = floor(rawEpoch);
     float fade = fract(rawEpoch);
 
-    float hCurr = hash(cell + epoch * 7.13);
-    float hPrev = hash(cell + (epoch - 1.0) * 7.13);
+    float hCurr = hash(cell + epoch * hashSalt);
+    float hPrev = hash(cell + (epoch - 1.0) * hashSalt);
     float primeCurr = isPrime(2.0 + floor(hCurr * 497.0));
     float primePrev = isPrime(2.0 + floor(hPrev * 497.0));
 
     return mix(primePrev, primeCurr, smoothstep(0.0, 0.4, fade));
 }
+
+// Convenience constants for layer indices
+#define LAYER_CELL 0.0
+#define LAYER_EDGE 1.0
+#define LAYER_NODE 2.0
 
 // Grid line distance
 float gridLine(vec2 p, float spacing, float thickness) {
@@ -628,17 +638,14 @@ float gridLine(vec2 p, float spacing, float thickness) {
     return 1.0 - smoothstep(0.0, thickness, min(g.x, g.y));
 }
 
-// Edge primality: check if either adjacent cell along an edge is prime
+// Edge primality: driven by LAYER_EDGE — independent from cells and nodes
 float edgePrime(vec2 p, float spacing) {
     vec2 cell = floor(p / spacing);
     vec2 f = fract(p / spacing);
-    // Horizontal edge (near y grid line)
     float hy = abs(f.y - 0.5);
-    float hp = max(smoothPrime(cell), smoothPrime(cell + vec2(0.0, -1.0)));
-    // Vertical edge (near x grid line)
+    float hp = max(smoothPrime(cell, LAYER_EDGE), smoothPrime(cell + vec2(0.0, -1.0), LAYER_EDGE));
     float hx = abs(f.x - 0.5);
-    float vp = max(smoothPrime(cell), smoothPrime(cell + vec2(-1.0, 0.0)));
-    // Blend: closer to which edge?
+    float vp = max(smoothPrime(cell, LAYER_EDGE), smoothPrime(cell + vec2(-1.0, 0.0), LAYER_EDGE));
     float edgeX = 1.0 - smoothstep(0.0, 0.08, hx);
     float edgeY = 1.0 - smoothstep(0.0, 0.08, hy);
     return edgeX * vp + edgeY * hp;
@@ -676,7 +683,7 @@ void main() {
     float spacing = 0.06;
     vec2 cell = floor(p / spacing);
     vec2 cellCenter = (cell + 0.5) * spacing;
-    float prime = smoothPrime(cell);
+    float prime = smoothPrime(cell, LAYER_CELL);
 
     // Grid lines — base
     float gl = gridLine(p, spacing, 0.001);
@@ -689,11 +696,11 @@ void main() {
     float distToNode = length(p - nearest);
     float nodeGlow = exp(-distToNode * distToNode * 8000.0);
 
-    // Node primality: intersection is where 4 cells meet — bright if any is prime
+    // Node primality: driven by LAYER_NODE — independent from cells and edges
     vec2 nc = floor(nearest / spacing);
     float nodePrime = max(
-        max(smoothPrime(nc), smoothPrime(nc - vec2(1.0, 0.0))),
-        max(smoothPrime(nc - vec2(0.0, 1.0)), smoothPrime(nc - vec2(1.0, 1.0))))
+        max(smoothPrime(nc, LAYER_NODE), smoothPrime(nc - vec2(1.0, 0.0), LAYER_NODE)),
+        max(smoothPrime(nc - vec2(0.0, 1.0), LAYER_NODE), smoothPrime(nc - vec2(1.0, 1.0), LAYER_NODE)))
     ;
 
     // Cell interior: prime cells get a faint fill
