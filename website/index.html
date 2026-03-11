@@ -703,7 +703,7 @@ void main() {
         var scrollNorm = scrollY / (document.body.scrollHeight - window.innerHeight || 1);
         gl.uniform1f(tLoc, now * 0.001);
         gl.uniform2f(rLoc, canvas.width, canvas.height);
-        gl.uniform1f(sLoc, scrollNorm * 1.5);
+        gl.uniform1f(sLoc, -scrollNorm * 1.5);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         requestAnimationFrame(frame);
     }
@@ -901,7 +901,8 @@ void main() {
         <div class="section-label">Requirements</div>
         <h2 class="section-title">System requirements</h2>
         <p class="section-desc" style="margin: 0 auto 48px;">
-            Runs on Linux, macOS, and Windows. GPU acceleration requires NVIDIA (Linux/Windows) or Apple Silicon (macOS).
+            Runs on Linux, macOS, and Windows.<br>
+            GPU acceleration via NVIDIA on Linux and Windows, Apple Silicon on macOS.
         </p>
     </div>
 
@@ -909,7 +910,7 @@ void main() {
         <div class="req-card">
             <div class="req-label">Operating System</div>
             <div class="req-value">Linux / macOS / Windows</div>
-            <div class="req-note">x86_64 or Apple Silicon (arm64)</div>
+            <div class="req-note">x86_64 and Apple Silicon arm64</div>
         </div>
         <div class="req-card">
             <div class="req-label">Python</div>
@@ -918,13 +919,13 @@ void main() {
         </div>
         <div class="req-card">
             <div class="req-label">GPU</div>
-            <div class="req-value">NVIDIA / Apple Silicon</div>
+            <div class="req-value">NVIDIA or Apple Silicon</div>
             <div class="req-note">8 GB+ VRAM recommended</div>
         </div>
         <div class="req-card">
             <div class="req-label">Installation</div>
             <div class="req-value">Self-contained</div>
-            <div class="req-note">Everything in ~/.splatrix/ — zero system modification</div>
+            <div class="req-note">Everything in ~/.splatrix/</div>
         </div>
     </div>
 </section>
