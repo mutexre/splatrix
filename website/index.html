@@ -600,12 +600,14 @@ float isPrime(float n) {
     return 1.0;
 }
 
-// Map 2D grid cell index to a single integer for primality
-// Time-shifted so different cells become prime over time
+// Per-cell independent primality: each cell hashes its position with a
+// time epoch to produce a different candidate integer each cycle.
+// Cells have unique phase offsets so they don't all flip at once.
 float cellIndex(vec2 cell) {
-    // Shift by a time-varying integer so prime pattern migrates
-    vec2 c = cell + 200.0 + vec2(floor(t * 0.4), floor(t * 0.27));
-    return c.x + (c.x + c.y) * (c.x + c.y + 1.0) * 0.5;
+    float cellPhase = hash(cell * 31.17);          // unique per cell
+    float epoch = floor(t * 0.35 + cellPhase);     // staggered ticks
+    float h = hash(cell + epoch * 7.13);           // new number each epoch
+    return 2.0 + floor(h * 497.0);                 // range [2..499]
 }
 
 // Grid line distance
@@ -687,9 +689,9 @@ void main() {
     float cellDist = length(p - cellCenter);
     float cellFill = exp(-cellDist * cellDist * 600.0) * prime;
 
-    // Time-driven pulse: prime cells/edges pulse at different phases
-    float phase = fract(ci * 0.618033988 + t * 0.6);
-    float pulse = smoothstep(0.0, 0.15, phase) * smoothstep(0.5, 0.15, phase);
+    // Pulse: each cell has its own phase derived from position hash
+    float cellPhase = hash(cell * 31.17);
+    float pulse = 0.5 + 0.5 * sin(t * 2.5 + cellPhase * 6.283);
     float primePulse = prime * pulse;
 
     // Blob influence for coloring
