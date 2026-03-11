@@ -26,7 +26,6 @@ dependencies = [
     "PyQt6>=6.6.0",
     "PyQt6-Qt6>=6.6.0",
     "PyQt6-WebEngine>=6.6.0",
-    "PyQt6-QmlImport>=6.6.0",
     "psutil>=5.9.0",
     "PyYAML>=6.0",
     "numpy>=1.24.0",
