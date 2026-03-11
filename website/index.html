@@ -201,12 +201,11 @@
             line-height: 1.7;
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
-            background: rgba(10, 10, 15, 0.35);
+            background: rgba(10, 10, 15, 0.25);
             border: none;
-            border-radius: 16px;
+            border-radius: 24px;
             padding: 12px 24px;
-            -webkit-mask-image: radial-gradient(ellipse 110% 130% at center, black 30%, transparent 80%);
-            mask-image: radial-gradient(ellipse 110% 130% at center, black 30%, transparent 80%);
+            box-shadow: 0 0 50px 30px rgba(10, 10, 15, 0.25);
         }
 
         .hero-buttons {
@@ -822,7 +821,7 @@ void main() {
     var scrollY = 0;
 
     // Layer opacity values (controlled by debug sliders)
-    var layerOpacity = { cell: 1.0, edge: 1.0, node: 1.0 };
+    var layerOpacity = { cell: 1.0, edge: 0.0, node: 0.0 };
 
     window.addEventListener('scroll', function() { scrollY = window.pageYOffset; }, {passive: true});
 
@@ -851,12 +850,14 @@ void main() {
         document.body.appendChild(panel);
 
         function makeSlider(label, key) {
+            var def = Math.round(layerOpacity[key] * 100);
+            var defLabel = layerOpacity[key].toFixed(2);
             return '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
                 '<span style="width:42px">' + label + '</span>' +
-                '<input type="range" min="0" max="100" value="100" ' +
+                '<input type="range" min="0" max="100" value="' + def + '" ' +
                 'style="flex:1;accent-color:#0891b2;height:4px" ' +
                 'oninput="window._gridOpacity(\'' + key + '\', this.value)">' +
-                '<span class="val" style="width:28px;text-align:right;font-variant-numeric:tabular-nums">1.0</span></label>';
+                '<span class="val" style="width:28px;text-align:right;font-variant-numeric:tabular-nums">' + defLabel + '</span></label>';
         }
 
         window._gridOpacity = function(key, val) {
