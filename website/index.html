@@ -712,20 +712,62 @@ float algoPowerMod(float h) {
 }
 
 // ═══════════════════════════════════════════════════
-// Dispatcher: evaluate selected algorithm for a hash value
+// Algorithm 5: ULAM SPIRAL — primes on a spiral grid
+// Param1: drift range (default 20)
+// Param2: spiral scale (default 1)
+// Shows visible diagonal structures where primes cluster
 // ═══════════════════════════════════════════════════
-float evalAlgo(float h) {
+float ulamIndex(vec2 sc) {
+    float x = sc.x, y = sc.y;
+    float k = max(abs(x), abs(y));
+    if (k < 0.5) return 1.0;
+    float base = (2.0 * k - 1.0) * (2.0 * k - 1.0);
+    // East side going up: x == k
+    if (abs(x - k) < 0.5 && y > -(k - 0.5))
+        return base + (y + k);
+    // North side going left: y == k
+    if (abs(y - k) < 0.5 && x < (k - 0.5))
+        return base + 2.0 * k + (k - x);
+    // West side going down: x == -k
+    if (abs(x + k) < 0.5)
+        return base + 4.0 * k + (k - y);
+    // South side going right: y == -k
+    return base + 6.0 * k + (x + k);
+}
+
+float algoUlamSpiral(vec2 cell) {
+    // Slowly drifting center reveals different parts of the spiral
+    float drift = uParam1;
+    vec2 center = vec2(sin(t * 0.08) * drift, cos(t * 0.11) * drift);
+    float scale = max(1.0, uParam2);
+    vec2 sc = floor((cell - center) / scale + 0.5);
+    float idx = ulamIndex(sc);
+    return isPrime(idx);
+}
+
+// ═══════════════════════════════════════════════════
+// Dispatcher: evaluate selected algorithm
+// ═══════════════════════════════════════════════════
+float evalAlgo(float h, vec2 cell) {
     if (uAlgo < 0.5) return algoPrime(h);
     if (uAlgo < 1.5) return algoCollatz(h);
     if (uAlgo < 2.5) return algoFibonacci(h);
     if (uAlgo < 3.5) return algoDigitalRoot(h);
-    return algoPowerMod(h);
+    if (uAlgo < 4.5) return algoPowerMod(h);
+    return algoUlamSpiral(cell);
 }
 
 // ═══════════════════════════════════════════════════
 // Smooth activation with per-layer epoch separation
+// Spatial algorithms (Ulam) bypass the epoch system
 // ═══════════════════════════════════════════════════
 float smoothActivation(vec2 cell, float layer) {
+    // Spatial algorithms — continuous motion, no epoch crossfade needed
+    if (uAlgo > 4.5) {
+        return evalAlgo(0.0, cell);
+    }
+
+    // Stochastic algorithms — per-cell epoch crossfade
     float phaseSeed = 31.17 + layer * 53.0;
     float hashSalt  = 7.13  + layer * 19.0;
     float speed     = 0.30  + layer * 0.08;
@@ -737,8 +779,8 @@ float smoothActivation(vec2 cell, float layer) {
 
     float hCurr = hash(cell + epoch * hashSalt);
     float hPrev = hash(cell + (epoch - 1.0) * hashSalt);
-    float actCurr = evalAlgo(hCurr);
-    float actPrev = evalAlgo(hPrev);
+    float actCurr = evalAlgo(hCurr, cell);
+    float actPrev = evalAlgo(hPrev, cell);
 
     float blend = 0.5 - 0.5 * cos(fade * 3.14159265);
     return mix(actPrev, actCurr, blend);
@@ -928,7 +970,9 @@ void main() {
         { name: 'Digital Root', p1: {label:'Target',    min:1,  max:9,   def:1,   step:1},
                                  p2: {label:'Range',     min:50, max:999, def:500, step:1} },
         { name: 'Power Mod',    p1: {label:'Modulus',   min:2,  max:97,  def:17,  step:1},
-                                 p2: {label:'Threshold', min:1,  max:30,  def:3,   step:1} }
+                                 p2: {label:'Threshold', min:1,  max:30,  def:3,   step:1} },
+        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:100, def:20,  step:1},
+                                 p2: {label:'Scale',     min:1,  max:5,   def:1,   step:1} }
     ];
 
     var algoState = { algo: 0, p1: ALGOS[0].p1.def, p2: ALGOS[0].p2.def };
