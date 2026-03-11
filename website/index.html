@@ -1164,8 +1164,7 @@ void main() {
         render();
 
         // Toggle with ` key
-        var visible = false;
-        panel.style.display = 'none';
+        var visible = true;
         document.addEventListener('keydown', function(e) {
             if (e.key === '`') { visible = !visible; panel.style.display = visible ? '' : 'none'; }
         });
