@@ -592,6 +592,9 @@ uniform float scroll;
 uniform float uCellOpacity;
 uniform float uEdgeOpacity;
 uniform float uNodeOpacity;
+uniform float uAlgo;
+uniform float uParam1;
+uniform float uParam2;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -615,14 +618,16 @@ float fbm(vec2 p) {
     return v;
 }
 
-// Trial division primality test for small integers (GLSL int loop)
-// Returns 1.0 if n is prime, 0.0 otherwise. Works for n up to ~500.
+// ═══════════════════════════════════════════════════
+// Algorithm 0: PRIME — trial division primality test
+// Param1: candidate range max (default 499)
+// Param2: unused
+// ═══════════════════════════════════════════════════
 float isPrime(float n) {
     if (n < 2.0) return 0.0;
     if (n < 4.0) return 1.0;
     if (mod(n, 2.0) < 0.5) return 0.0;
     if (mod(n, 3.0) < 0.5) return 0.0;
-    // Check up to sqrt(n) — unrolled loop (GLSL needs const bounds)
     for (int i = 0; i < 12; i++) {
         float d = float(i) * 6.0;
         float d1 = d + 5.0;
@@ -634,10 +639,93 @@ float isPrime(float n) {
     return 1.0;
 }
 
-// Per-cell smooth primality with layer separation.
-// 'layer' param gives each grid element (cells, edges, nodes) its own
-// epoch speed, phase seed, and hash salt — fully independent evolution.
-float smoothPrime(vec2 cell, float layer) {
+float algoPrime(float n) {
+    return isPrime(2.0 + floor(n * uParam1));
+}
+
+// ═══════════════════════════════════════════════════
+// Algorithm 1: COLLATZ — sequence length normalized
+// Param1: max iterations (default 60)
+// Param2: threshold fraction (default 0.4)
+// ═══════════════════════════════════════════════════
+float algoCollatz(float h) {
+    float n = 2.0 + floor(h * 300.0);
+    float steps = 0.0;
+    float maxIter = uParam1;
+    for (int i = 0; i < 80; i++) {
+        if (float(i) >= maxIter || n <= 1.0) break;
+        if (mod(n, 2.0) < 0.5) n = n / 2.0;
+        else n = n * 3.0 + 1.0;
+        steps += 1.0;
+    }
+    float norm = steps / maxIter;
+    return norm > uParam2 ? 1.0 : 0.0;
+}
+
+// ═══════════════════════════════════════════════════
+// Algorithm 2: FIBONACCI — proximity to Fibonacci numbers
+// Param1: range max (default 400)
+// Param2: proximity threshold (default 2)
+// ═══════════════════════════════════════════════════
+float algoFibonacci(float h) {
+    float n = floor(h * uParam1);
+    float a = 1.0, b = 1.0;
+    float minDist = abs(n - 1.0);
+    for (int i = 0; i < 24; i++) {
+        float c = a + b;
+        a = b; b = c;
+        minDist = min(minDist, abs(n - b));
+        if (b > uParam1 + 50.0) break;
+    }
+    return minDist <= uParam2 ? 1.0 : 0.0;
+}
+
+// ═══════════════════════════════════════════════════
+// Algorithm 3: DIGITAL ROOT — repeated digit sum
+// Param1: target digit (default 1, range 1-9)
+// Param2: range max (default 500)
+// ═══════════════════════════════════════════════════
+float algoDigitalRoot(float h) {
+    float n = 1.0 + floor(h * uParam2);
+    float dr = 1.0 + mod(n - 1.0, 9.0);
+    return abs(dr - uParam1) < 0.5 ? 1.0 : 0.0;
+}
+
+// ═══════════════════════════════════════════════════
+// Algorithm 4: POWER MOD — modular exponentiation patterns
+// Param1: modulus (default 17)
+// Param2: threshold (default 3)
+// ═══════════════════════════════════════════════════
+float algoPowerMod(float h) {
+    float base = 2.0 + floor(h * 50.0);
+    float exp = 3.0 + floor(fract(h * 7.77) * 20.0);
+    float m = max(2.0, floor(uParam1));
+    float result = 1.0;
+    base = mod(base, m);
+    for (int i = 0; i < 20; i++) {
+        if (exp <= 0.0) break;
+        if (mod(exp, 2.0) > 0.5) result = mod(result * base, m);
+        exp = floor(exp / 2.0);
+        base = mod(base * base, m);
+    }
+    return result < uParam2 ? 1.0 : 0.0;
+}
+
+// ═══════════════════════════════════════════════════
+// Dispatcher: evaluate selected algorithm for a hash value
+// ═══════════════════════════════════════════════════
+float evalAlgo(float h) {
+    if (uAlgo < 0.5) return algoPrime(h);
+    if (uAlgo < 1.5) return algoCollatz(h);
+    if (uAlgo < 2.5) return algoFibonacci(h);
+    if (uAlgo < 3.5) return algoDigitalRoot(h);
+    return algoPowerMod(h);
+}
+
+// ═══════════════════════════════════════════════════
+// Smooth activation with per-layer epoch separation
+// ═══════════════════════════════════════════════════
+float smoothActivation(vec2 cell, float layer) {
     float phaseSeed = 31.17 + layer * 53.0;
     float hashSalt  = 7.13  + layer * 19.0;
     float speed     = 0.30  + layer * 0.08;
@@ -649,16 +737,13 @@ float smoothPrime(vec2 cell, float layer) {
 
     float hCurr = hash(cell + epoch * hashSalt);
     float hPrev = hash(cell + (epoch - 1.0) * hashSalt);
-    float primeCurr = isPrime(2.0 + floor(hCurr * 497.0));
-    float primePrev = isPrime(2.0 + floor(hPrev * 497.0));
+    float actCurr = evalAlgo(hCurr);
+    float actPrev = evalAlgo(hPrev);
 
-    // Cosine interpolation: derivative is zero at both ends (C1 continuous)
-    // No flat plateaus — always in smooth motion across the full epoch
     float blend = 0.5 - 0.5 * cos(fade * 3.14159265);
-    return mix(primePrev, primeCurr, blend);
+    return mix(actPrev, actCurr, blend);
 }
 
-// Convenience constants for layer indices
 #define LAYER_CELL 0.0
 #define LAYER_EDGE 1.0
 #define LAYER_NODE 2.0
@@ -670,13 +755,13 @@ float gridLine(vec2 p, float spacing, float thickness) {
 }
 
 // Edge primality: driven by LAYER_EDGE — independent from cells and nodes
-float edgePrime(vec2 p, float spacing) {
+float edgeActivation(vec2 p, float spacing) {
     vec2 cell = floor(p / spacing);
     vec2 f = fract(p / spacing);
     float hy = abs(f.y - 0.5);
-    float hp = max(smoothPrime(cell, LAYER_EDGE), smoothPrime(cell + vec2(0.0, -1.0), LAYER_EDGE));
+    float hp = max(smoothActivation(cell, LAYER_EDGE), smoothActivation(cell + vec2(0.0, -1.0), LAYER_EDGE));
     float hx = abs(f.x - 0.5);
-    float vp = max(smoothPrime(cell, LAYER_EDGE), smoothPrime(cell + vec2(-1.0, 0.0), LAYER_EDGE));
+    float vp = max(smoothActivation(cell, LAYER_EDGE), smoothActivation(cell + vec2(-1.0, 0.0), LAYER_EDGE));
     float edgeX = 1.0 - smoothstep(0.0, 0.08, hx);
     float edgeY = 1.0 - smoothstep(0.0, 0.08, hy);
     return edgeX * vp + edgeY * hp;
@@ -714,13 +799,13 @@ void main() {
     float spacing = 0.06;
     vec2 cell = floor(p / spacing);
     vec2 cellCenter = (cell + 0.5) * spacing;
-    float prime = smoothPrime(cell, LAYER_CELL);
+    float prime = smoothActivation(cell, LAYER_CELL);
 
     // Grid lines — base
     float gl = gridLine(p, spacing, 0.001);
 
     // Edge intensity driven by prime adjacency
-    float ep = edgePrime(p, spacing);
+    float ep = edgeActivation(p, spacing);
 
     // Node (intersection) glow — use integer coords to avoid float precision quadrant splits
     vec2 nodeCoord = floor(p / spacing + 0.5);
@@ -731,8 +816,8 @@ void main() {
     // Node primality: driven by LAYER_NODE — independent from cells and edges
     vec2 nc = nodeCoord;
     float nodePrime = max(
-        max(smoothPrime(nc, LAYER_NODE), smoothPrime(nc - vec2(1.0, 0.0), LAYER_NODE)),
-        max(smoothPrime(nc - vec2(0.0, 1.0), LAYER_NODE), smoothPrime(nc - vec2(1.0, 1.0), LAYER_NODE)))
+        max(smoothActivation(nc, LAYER_NODE), smoothActivation(nc - vec2(1.0, 0.0), LAYER_NODE)),
+        max(smoothActivation(nc - vec2(0.0, 1.0), LAYER_NODE), smoothActivation(nc - vec2(1.0, 1.0), LAYER_NODE)))
     ;
 
     // Cell interior: prime cells get a faint fill
@@ -827,9 +912,26 @@ void main() {
     var cellLoc = gl.getUniformLocation(prog, 'uCellOpacity');
     var edgeLoc = gl.getUniformLocation(prog, 'uEdgeOpacity');
     var nodeLoc = gl.getUniformLocation(prog, 'uNodeOpacity');
+    var algoLoc = gl.getUniformLocation(prog, 'uAlgo');
+    var p1Loc = gl.getUniformLocation(prog, 'uParam1');
+    var p2Loc = gl.getUniformLocation(prog, 'uParam2');
     var scrollY = 0;
 
-    // Layer opacity values (controlled by debug sliders)
+    // Algorithm definitions: name, default param1, default param2, param labels/ranges
+    var ALGOS = [
+        { name: 'Prime',        p1: {label:'Range',     min:50, max:999, def:499, step:1},
+                                 p2: {label:'—',         min:0,  max:1,   def:0,   step:1} },
+        { name: 'Collatz',      p1: {label:'Max iter',  min:10, max:80,  def:60,  step:1},
+                                 p2: {label:'Threshold', min:0,  max:1,   def:0.4, step:0.01} },
+        { name: 'Fibonacci',    p1: {label:'Range',     min:50, max:800, def:400, step:10},
+                                 p2: {label:'Proximity', min:0,  max:20,  def:2,   step:1} },
+        { name: 'Digital Root', p1: {label:'Target',    min:1,  max:9,   def:1,   step:1},
+                                 p2: {label:'Range',     min:50, max:999, def:500, step:1} },
+        { name: 'Power Mod',    p1: {label:'Modulus',   min:2,  max:97,  def:17,  step:1},
+                                 p2: {label:'Threshold', min:1,  max:30,  def:3,   step:1} }
+    ];
+
+    var algoState = { algo: 0, p1: ALGOS[0].p1.def, p2: ALGOS[0].p2.def };
     var layerOpacity = { cell: 1.0, edge: 0.0, node: 0.0 };
 
     window.addEventListener('scroll', function() { scrollY = window.pageYOffset; }, {passive: true});
@@ -842,6 +944,9 @@ void main() {
         gl.uniform1f(cellLoc, layerOpacity.cell);
         gl.uniform1f(edgeLoc, layerOpacity.edge);
         gl.uniform1f(nodeLoc, layerOpacity.node);
+        gl.uniform1f(algoLoc, algoState.algo);
+        gl.uniform1f(p1Loc, algoState.p1);
+        gl.uniform1f(p2Loc, algoState.p2);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         requestAnimationFrame(frame);
     }
@@ -851,31 +956,74 @@ void main() {
     (function buildDebugPanel() {
         var panel = document.createElement('div');
         panel.id = 'debug-panel';
-        panel.innerHTML =
-            '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Grid Layers</div>' +
-            makeSlider('Cells', 'cell') +
-            makeSlider('Edges', 'edge') +
-            makeSlider('Nodes', 'node');
         document.body.appendChild(panel);
 
-        function makeSlider(label, key) {
-            var def = Math.round(layerOpacity[key] * 100);
-            var defLabel = layerOpacity[key].toFixed(2);
-            return '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
-                '<span style="width:42px">' + label + '</span>' +
-                '<input type="range" min="0" max="100" value="' + def + '" ' +
-                'style="flex:1;accent-color:#0891b2;height:4px" ' +
-                'oninput="window._gridOpacity(\'' + key + '\', this.value)">' +
-                '<span class="val" style="width:28px;text-align:right;font-variant-numeric:tabular-nums">' + defLabel + '</span></label>';
+        function render() {
+            var a = ALGOS[algoState.algo];
+            var html = '<div style="margin-bottom:8px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Algorithm</div>';
+            // Combo box
+            html += '<select id="algo-select" style="width:100%;padding:4px 6px;margin-bottom:10px;background:#1a1a24;color:#ccc;border:1px solid #333;border-radius:4px;font-size:12px;font-family:inherit">';
+            for (var i = 0; i < ALGOS.length; i++) {
+                html += '<option value="' + i + '"' + (i === algoState.algo ? ' selected' : '') + '>' + ALGOS[i].name + '</option>';
+            }
+            html += '</select>';
+            // Param sliders
+            html += makeParam('p1', a.p1);
+            if (a.p2.label !== '—') html += makeParam('p2', a.p2);
+            // Separator
+            html += '<div style="margin:10px 0 8px;border-top:1px solid #333"></div>';
+            html += '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Layers</div>';
+            html += makeLayerSlider('Cells', 'cell');
+            html += makeLayerSlider('Edges', 'edge');
+            html += makeLayerSlider('Nodes', 'node');
+            panel.innerHTML = html;
+            // Bind combo
+            panel.querySelector('#algo-select').addEventListener('change', function() {
+                algoState.algo = parseInt(this.value);
+                var na = ALGOS[algoState.algo];
+                algoState.p1 = na.p1.def;
+                algoState.p2 = na.p2.def;
+                render();
+            });
         }
 
-        window._gridOpacity = function(key, val) {
+        function makeParam(key, cfg) {
+            var val = algoState[key];
+            var norm = Math.round((val - cfg.min) / (cfg.max - cfg.min) * 100);
+            return '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
+                '<span style="width:64px;flex-shrink:0">' + cfg.label + '</span>' +
+                '<input type="range" min="0" max="100" value="' + norm + '" ' +
+                'style="flex:1;accent-color:#0891b2;height:4px" ' +
+                'oninput="window._algoParam(\'' + key + '\',' + cfg.min + ',' + cfg.max + ',' + cfg.step + ',this.value,this)">' +
+                '<span class="val" style="width:32px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + formatVal(val, cfg.step) + '</span></label>';
+        }
+
+        function makeLayerSlider(label, key) {
+            var def = Math.round(layerOpacity[key] * 100);
+            return '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
+                '<span style="width:64px;flex-shrink:0">' + label + '</span>' +
+                '<input type="range" min="0" max="100" value="' + def + '" ' +
+                'style="flex:1;accent-color:#0891b2;height:4px" ' +
+                'oninput="window._layerOpacity(\'' + key + '\',this.value,this)">' +
+                '<span class="val" style="width:32px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + layerOpacity[key].toFixed(2) + '</span></label>';
+        }
+
+        function formatVal(v, step) { return step >= 1 ? Math.round(v).toString() : v.toFixed(2); }
+
+        window._algoParam = function(key, min, max, step, sliderVal, el) {
+            var raw = min + (sliderVal / 100) * (max - min);
+            var v = step >= 1 ? Math.round(raw) : parseFloat(raw.toFixed(2));
+            algoState[key] = v;
+            el.parentElement.querySelector('.val').textContent = formatVal(v, step);
+        };
+
+        window._layerOpacity = function(key, val, el) {
             var v = val / 100;
             layerOpacity[key] = v;
-            var labels = panel.querySelectorAll('label');
-            var idx = key === 'cell' ? 0 : key === 'edge' ? 1 : 2;
-            labels[idx].querySelector('.val').textContent = v.toFixed(2);
+            el.parentElement.querySelector('.val').textContent = v.toFixed(2);
         };
+
+        render();
 
         // Hidden by default, toggle with ` key
         var visible = false;
