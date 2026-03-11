@@ -1133,8 +1133,11 @@ void main() {
             if (el) el.style.setProperty('--se-clip', buildSuperellipsePolygon(seParams.n, seParams.a, seParams.b));
         }
 
-        // Apply initial values on load
-        setTimeout(function() { applySuperellipse(); updatePlaqueMargin(plaqueMargin); }, 0);
+        // Apply initial values after DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            applySuperellipse();
+            updatePlaqueMargin(plaqueMargin);
+        });
 
         window._seParam = function(key, min, max, step, val, el) {
             var raw = min + (val / 100) * (max - min);
