@@ -398,7 +398,7 @@
 
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 20px;
         }
 
@@ -447,20 +447,17 @@
         }
 
         .pipeline-steps {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
             gap: 16px;
-            flex-wrap: wrap;
-            justify-content: center;
         }
 
         .pipeline-step {
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 20px 24px;
+            padding: 20px 16px;
             text-align: center;
-            flex: 1;
-            min-width: 160px;
             position: relative;
         }
 
@@ -498,7 +495,7 @@
 
         .req-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 16px;
         }
 
@@ -563,11 +560,19 @@
         }
 
         /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .pipeline-steps { grid-template-columns: repeat(3, 1fr); }
+            .req-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
         @media (max-width: 640px) {
             .nav-links { display: none; }
             .hero { padding: 120px 16px 60px; }
             .hero p { font-size: 16px; }
-            .pipeline-steps { flex-direction: column; }
+            .features-grid { grid-template-columns: 1fr; }
+            .pipeline-steps { grid-template-columns: repeat(2, 1fr); }
+            .req-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -985,32 +990,32 @@ void main() {
 
     <div class="features-grid">
         <div class="feature-card">
-            <div class="feature-icon">&#9654;</div>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
             <h3>One-Click Pipeline</h3>
             <p>Select a video, adjust settings, click Start. The entire Nerfstudio pipeline runs automatically with real-time progress tracking.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">&#9724;</div>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
             <h3>Embedded 3D Viewer</h3>
             <p>Preview your Gaussian Splat directly inside the app using a WebGL-based viewer powered by GaussianSplats3D.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">&#128247;</div>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></div>
             <h3>Frame Browser</h3>
             <p>Inspect extracted frames in a responsive grid view with adjustable thumbnail sizes and fit modes.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">&#128190;</div>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
             <h3>Project Persistence</h3>
             <p>Save and restore projects. Resume interrupted processing from any completed stage. Work on multiple projects simultaneously.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">&#9200;</div>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
             <h3>ETA Tracking</h3>
             <p>Real-time estimated time remaining for each processing stage, so you always know when your splat will be ready.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">&#128295;</div>
+            <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
             <h3>Flexible Export</h3>
             <p>Export to standard PLY format compatible with all major Gaussian Splatting viewers and editors.</p>
         </div>
@@ -1021,7 +1026,7 @@ void main() {
 <section class="pipeline" id="pipeline">
     <div style="text-align: center;">
         <div class="section-label">Pipeline</div>
-        <h2 class="section-title">Six automated stages</h2>
+        <h2 class="section-title">Automated stages</h2>
         <p class="section-desc" style="margin: 0 auto 48px;">
             Each stage runs sequentially with detailed progress. Start from any completed stage to iterate quickly.
         </p>
