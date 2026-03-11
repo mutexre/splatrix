@@ -593,7 +593,7 @@
 <svg width="0" height="0" style="position:absolute">
     <defs>
         <clipPath id="superellipse" clipPathUnits="objectBoundingBox">
-            <path d="M 0.5 0 C 0.85 0, 1 0.15, 1 0.5 C 1 0.85, 0.85 1, 0.5 1 C 0.15 1, 0 0.85, 0 0.5 C 0 0.15, 0.15 0, 0.5 0 Z"/>
+            <path d="M 0.5 0 C 0.92 0, 1 0.08, 1 0.5 C 1 0.92, 0.92 1, 0.5 1 C 0.08 1, 0 0.92, 0 0.5 C 0 0.08, 0.08 0, 0.5 0 Z"/>
         </clipPath>
     </defs>
 </svg>
@@ -644,7 +644,8 @@ float isPrime(float n) {
     if (n < 4.0) return 1.0;
     if (mod(n, 2.0) < 0.5) return 0.0;
     if (mod(n, 3.0) < 0.5) return 0.0;
-    for (int i = 0; i < 12; i++) {
+    // 6k±1 trial division up to sqrt(n), covers n up to ~14400
+    for (int i = 0; i < 20; i++) {
         float d = float(i) * 6.0;
         float d1 = d + 5.0;
         float d2 = d + 7.0;
@@ -751,14 +752,14 @@ float ulamIndex(vec2 sc) {
     return base + 6.0 * k + (x + k);
 }
 
-float algoUlamSpiral(vec2 cell) {
-    // Slowly drifting center reveals different parts of the spiral
+float algoUlamSpiral(vec2 p) {
+    // uParam2 = density: spiral cells per unit in world space
+    float density = max(1.0, uParam2);
+    // Slowly drifting center
     float drift = uParam1;
     vec2 center = vec2(sin(t * 0.08) * drift, cos(t * 0.11) * drift);
-    // uParam2 controls how many spiral cells fit per grid cell
-    // Higher = more zoomed out = more spiral structure visible
-    float subdivisions = max(1.0, uParam2);
-    vec2 sc = floor(cell * subdivisions - center + 0.5);
+    // Compute spiral cell from continuous position at fine resolution
+    vec2 sc = floor(p * density - center + 0.5);
     float idx = ulamIndex(sc);
     return isPrime(idx);
 }
@@ -766,23 +767,23 @@ float algoUlamSpiral(vec2 cell) {
 // ═══════════════════════════════════════════════════
 // Dispatcher: evaluate selected algorithm
 // ═══════════════════════════════════════════════════
-float evalAlgo(float h, vec2 cell) {
+float evalAlgo(float h, vec2 cell, vec2 p) {
     if (uAlgo < 0.5) return algoPrime(h);
     if (uAlgo < 1.5) return algoCollatz(h);
     if (uAlgo < 2.5) return algoFibonacci(h);
     if (uAlgo < 3.5) return algoDigitalRoot(h);
     if (uAlgo < 4.5) return algoPowerMod(h);
-    return algoUlamSpiral(cell);
+    return algoUlamSpiral(p);
 }
 
 // ═══════════════════════════════════════════════════
 // Smooth activation with per-layer epoch separation
 // Spatial algorithms (Ulam) bypass the epoch system
 // ═══════════════════════════════════════════════════
-float smoothActivation(vec2 cell, float layer) {
+float smoothActivation(vec2 cell, float layer, vec2 p) {
     // Spatial algorithms — continuous motion, no epoch crossfade needed
     if (uAlgo > 4.5) {
-        return evalAlgo(0.0, cell);
+        return evalAlgo(0.0, cell, p);
     }
 
     // Stochastic algorithms — per-cell epoch crossfade
@@ -797,8 +798,8 @@ float smoothActivation(vec2 cell, float layer) {
 
     float hCurr = hash(cell + epoch * hashSalt);
     float hPrev = hash(cell + (epoch - 1.0) * hashSalt);
-    float actCurr = evalAlgo(hCurr, cell);
-    float actPrev = evalAlgo(hPrev, cell);
+    float actCurr = evalAlgo(hCurr, cell, p);
+    float actPrev = evalAlgo(hPrev, cell, p);
 
     float blend = 0.5 - 0.5 * cos(fade * 3.14159265);
     return mix(actPrev, actCurr, blend);
@@ -814,14 +815,14 @@ float gridLine(vec2 p, float spacing, float thickness) {
     return 1.0 - smoothstep(0.0, thickness, min(g.x, g.y));
 }
 
-// Edge primality: driven by LAYER_EDGE — independent from cells and nodes
+// Edge activation: driven by LAYER_EDGE — independent from cells and nodes
 float edgeActivation(vec2 p, float spacing) {
     vec2 cell = floor(p / spacing);
     vec2 f = fract(p / spacing);
     float hy = abs(f.y - 0.5);
-    float hp = max(smoothActivation(cell, LAYER_EDGE), smoothActivation(cell + vec2(0.0, -1.0), LAYER_EDGE));
+    float hp = max(smoothActivation(cell, LAYER_EDGE, p), smoothActivation(cell + vec2(0.0, -1.0), LAYER_EDGE, p));
     float hx = abs(f.x - 0.5);
-    float vp = max(smoothActivation(cell, LAYER_EDGE), smoothActivation(cell + vec2(-1.0, 0.0), LAYER_EDGE));
+    float vp = max(smoothActivation(cell, LAYER_EDGE, p), smoothActivation(cell + vec2(-1.0, 0.0), LAYER_EDGE, p));
     float edgeX = 1.0 - smoothstep(0.0, 0.08, hx);
     float edgeY = 1.0 - smoothstep(0.0, 0.08, hy);
     return edgeX * vp + edgeY * hp;
@@ -859,7 +860,7 @@ void main() {
     float spacing = 0.06;
     vec2 cell = floor(p / spacing);
     vec2 cellCenter = (cell + 0.5) * spacing;
-    float prime = smoothActivation(cell, LAYER_CELL);
+    float prime = smoothActivation(cell, LAYER_CELL, p);
 
     // Grid lines — base
     float gl = gridLine(p, spacing, 0.001);
@@ -876,8 +877,8 @@ void main() {
     // Node primality: driven by LAYER_NODE — independent from cells and edges
     vec2 nc = nodeCoord;
     float nodePrime = max(
-        max(smoothActivation(nc, LAYER_NODE), smoothActivation(nc - vec2(1.0, 0.0), LAYER_NODE)),
-        max(smoothActivation(nc - vec2(0.0, 1.0), LAYER_NODE), smoothActivation(nc - vec2(1.0, 1.0), LAYER_NODE)))
+        max(smoothActivation(nc, LAYER_NODE, p), smoothActivation(nc - vec2(1.0, 0.0), LAYER_NODE, p)),
+        max(smoothActivation(nc - vec2(0.0, 1.0), LAYER_NODE, p), smoothActivation(nc - vec2(1.0, 1.0), LAYER_NODE, p)))
     ;
 
     // Cell interior: prime cells get a faint fill
@@ -989,8 +990,8 @@ void main() {
                                  p2: {label:'Range',     min:50, max:999, def:500, step:1} },
         { name: 'Power Mod',    p1: {label:'Modulus',   min:2,  max:97,  def:17,  step:1},
                                  p2: {label:'Threshold', min:1,  max:30,  def:3,   step:1} },
-        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:200, def:40,  step:1},
-                                 p2: {label:'Density',   min:1,  max:20,  def:8,   step:1} }
+        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:60,  def:15,  step:1},
+                                 p2: {label:'Density',   min:5,  max:50,  def:20,  step:1} }
     ];
 
     var algoState = { algo: 0, p1: ALGOS[0].p1.def, p2: ALGOS[0].p2.def };
