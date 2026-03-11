@@ -147,15 +147,17 @@ cd "$SPLATRIX_HOME/src"
 
 step "Create environment"
 
-if "$MAMBA_EXE" env list 2>/dev/null | grep -q "${ENV_NAME}"; then
+ENV_PREFIX="$MAMBA_ROOT_PREFIX/envs/$ENV_NAME"
+
+if [[ -d "$ENV_PREFIX/conda-meta" ]]; then
     info "Environment '${ENV_NAME}' exists, activating..."
 else
     info "Creating environment '${ENV_NAME}' (Python ${PYTHON_VERSION})..."
-    "$MAMBA_EXE" create -n "$ENV_NAME" python="${PYTHON_VERSION}" -y -c conda-forge -q > /dev/null 2>&1
+    "$MAMBA_EXE" create -p "$ENV_PREFIX" python="${PYTHON_VERSION}" -y -c conda-forge -q > /dev/null 2>&1
     ok "Environment created"
 fi
 
-micromamba activate "$ENV_NAME"
+micromamba activate "$ENV_PREFIX"
 
 # ── Dependencies ─────────────────────────────────────────────────
 
