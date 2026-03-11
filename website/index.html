@@ -718,24 +718,22 @@ void main() {
     // Blob influence for coloring
     float blobInfluence = g1 + g2 + g3 + g4;
 
-    // Assemble grid color
-    vec3 gridBase = vec3(0.06, 0.09, 0.10);
-    vec3 gridPrime = mix(teal * 0.5, orange * 0.5, hash(cell));
+    // Per-element colors — each derived from its own position
+    vec3 gridBase  = vec3(0.06, 0.09, 0.10);
+    vec3 cellColor = mix(teal * 0.5, orange * 0.5, hash(cell));
+    vec3 nodeColor = mix(teal * 0.6, orange * 0.6, hash(nc * 17.3));
 
-    // Base grid lines
+    // 1. Cell interior soft glow (bottom layer)
+    col += cellColor * cellFill * (0.08 + primePulse * 0.15);
+    col += cellColor * cellFill * blobInfluence * 0.15;
+
+    // 2. Grid lines and edges (middle layer)
     col += gridBase * gl * 0.2;
-    // Prime-adjacent edges glow brighter
-    col += gridPrime * gl * ep * 0.3;
+    col += cellColor * gl * ep * 0.3;
 
-    // Prime cell interior soft glow
-    col += gridPrime * cellFill * (0.08 + primePulse * 0.15);
-
-    // Node dots — prime intersections are brighter and pulse
+    // 3. Node dots (top layer — single consistent color per node)
     col += gridBase * nodeGlow * 0.3;
-    col += gridPrime * nodeGlow * nodePrime * (0.4 + pulse * 0.5);
-
-    // Extra: blob proximity boosts prime cells
-    col += gridPrime * cellFill * blobInfluence * 0.15;
+    col += nodeColor * nodeGlow * nodePrime * (0.4 + pulse * 0.5);
 
     // Vignette
     float vig = 1.0 - dot((uv - 0.5) * 1.4, (uv - 0.5) * 1.4);
