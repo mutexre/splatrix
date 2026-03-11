@@ -69,7 +69,7 @@ Write-Ok "Install directory: $SPLATRIX_HOME"
 Write-Step "micromamba"
 
 $MAMBA_EXE = "$SPLATRIX_HOME\bin\micromamba.exe"
-$env:MAMBA_ROOT_PREFIX = "$SPLATRIX_HOME\envs"
+$env:MAMBA_ROOT_PREFIX = "$SPLATRIX_HOME"
 
 if (Test-Path $MAMBA_EXE) {
     Write-Ok "micromamba already installed"
@@ -194,7 +194,7 @@ $launcherContent = @"
 REM Splatrix launcher — self-contained, no PATH modification needed
 
 set "SPLATRIX_HOME=%USERPROFILE%\.splatrix"
-set "MAMBA_ROOT_PREFIX=%SPLATRIX_HOME%\envs"
+set "MAMBA_ROOT_PREFIX=%SPLATRIX_HOME%"
 set "MAMBA_EXE=%SPLATRIX_HOME%\bin\micromamba.exe"
 
 if not exist "%MAMBA_EXE%" (
@@ -215,7 +215,7 @@ Write-Ok "Launcher: $SPLATRIX_HOME\bin\splatrix.bat"
 $psLauncherContent = @'
 # Splatrix launcher for PowerShell
 $env:SPLATRIX_HOME = if ($env:SPLATRIX_HOME) { $env:SPLATRIX_HOME } else { "$env:USERPROFILE\.splatrix" }
-$env:MAMBA_ROOT_PREFIX = "$env:SPLATRIX_HOME\envs"
+$env:MAMBA_ROOT_PREFIX = "$env:SPLATRIX_HOME"
 $MAMBA_EXE = "$env:SPLATRIX_HOME\bin\micromamba.exe"
 
 if (-not (Test-Path $MAMBA_EXE)) {
