@@ -199,13 +199,20 @@
             max-width: 600px;
             margin: 0 auto 40px;
             line-height: 1.7;
+            position: relative;
+            padding: 12px 24px;
+        }
+
+        .hero p::before {
+            content: '';
+            position: absolute;
+            inset: -20px -30px;
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             background: rgba(10, 10, 15, 0.25);
-            border: none;
-            border-radius: 24px;
-            padding: 12px 24px;
             box-shadow: 0 0 50px 30px rgba(10, 10, 15, 0.25);
+            z-index: -1;
+            clip-path: url(#superellipse);
         }
 
         .hero-buttons {
@@ -582,6 +589,15 @@
 </head>
 <body>
 
+<!-- Superellipse clip path (n≈4 squircle) -->
+<svg width="0" height="0" style="position:absolute">
+    <defs>
+        <clipPath id="superellipse" clipPathUnits="objectBoundingBox">
+            <path d="M 0.5 0 C 0.85 0, 1 0.15, 1 0.5 C 1 0.85, 0.85 1, 0.5 1 C 0.15 1, 0 0.85, 0 0.5 C 0 0.15, 0.15 0, 0.5 0 Z"/>
+        </clipPath>
+    </defs>
+</svg>
+
 <!-- WebGL Plasma Background -->
 <canvas id="plasma-bg"></canvas>
 <script id="plasma-fs" type="x-shader/x-fragment">
@@ -739,8 +755,10 @@ float algoUlamSpiral(vec2 cell) {
     // Slowly drifting center reveals different parts of the spiral
     float drift = uParam1;
     vec2 center = vec2(sin(t * 0.08) * drift, cos(t * 0.11) * drift);
-    float scale = max(1.0, uParam2);
-    vec2 sc = floor((cell - center) / scale + 0.5);
+    // uParam2 controls how many spiral cells fit per grid cell
+    // Higher = more zoomed out = more spiral structure visible
+    float subdivisions = max(1.0, uParam2);
+    vec2 sc = floor(cell * subdivisions - center + 0.5);
     float idx = ulamIndex(sc);
     return isPrime(idx);
 }
@@ -971,8 +989,8 @@ void main() {
                                  p2: {label:'Range',     min:50, max:999, def:500, step:1} },
         { name: 'Power Mod',    p1: {label:'Modulus',   min:2,  max:97,  def:17,  step:1},
                                  p2: {label:'Threshold', min:1,  max:30,  def:3,   step:1} },
-        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:100, def:20,  step:1},
-                                 p2: {label:'Scale',     min:1,  max:5,   def:1,   step:1} }
+        { name: 'Ulam Spiral',  p1: {label:'Drift',     min:0,  max:200, def:40,  step:1},
+                                 p2: {label:'Density',   min:1,  max:20,  def:8,   step:1} }
     ];
 
     var algoState = { algo: 0, p1: ALGOS[0].p1.def, p2: ALGOS[0].p2.def };
