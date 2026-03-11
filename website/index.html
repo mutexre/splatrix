@@ -1025,9 +1025,8 @@ void main() {
 
         render();
 
-        // Hidden by default, toggle with ` key
-        var visible = false;
-        panel.style.display = 'none';
+        // Toggle with ` key
+        var visible = true;
         document.addEventListener('keydown', function(e) {
             if (e.key === '`') { visible = !visible; panel.style.display = visible ? '' : 'none'; }
         });
