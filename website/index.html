@@ -624,7 +624,10 @@ float smoothPrime(vec2 cell, float layer) {
     float primeCurr = isPrime(2.0 + floor(hCurr * 497.0));
     float primePrev = isPrime(2.0 + floor(hPrev * 497.0));
 
-    return mix(primePrev, primeCurr, smoothstep(0.0, 0.4, fade));
+    // Cosine interpolation: derivative is zero at both ends (C1 continuous)
+    // No flat plateaus — always in smooth motion across the full epoch
+    float blend = 0.5 - 0.5 * cos(fade * 3.14159265);
+    return mix(primePrev, primeCurr, blend);
 }
 
 // Convenience constants for layer indices
