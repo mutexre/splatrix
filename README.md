@@ -43,15 +43,14 @@ This automatically installs micromamba, PyTorch, COLMAP, FFmpeg, Nerfstudio, and
 ## Run
 
 ```bash
-~/.splatrix/bin/splatrix
+splatrix
 ```
 
-On Windows: `~\.splatrix\bin\splatrix.bat`
+(Restart your shell after install so PATH takes effect.)
 
 ## Uninstall
 
 ```bash
-~/.splatrix/bin/splatrix  # has no uninstall — just:
 rm -rf ~/.splatrix
 # Linux: also rm ~/.local/share/applications/splatrix.desktop
 ```

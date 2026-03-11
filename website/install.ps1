@@ -266,6 +266,18 @@ if ($addDesktop -ne "n" -and $addDesktop -ne "N") {
     }
 }
 
+# ── Add to PATH ──────────────────────────────────────────────────
+
+$splatrixBin = "$SPLATRIX_HOME\bin"
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath -notlike "*$splatrixBin*") {
+    [Environment]::SetEnvironmentVariable("Path", "$splatrixBin;$userPath", "User")
+    $env:Path = "$splatrixBin;$env:Path"
+    Write-Ok "Added $splatrixBin to user PATH"
+} else {
+    Write-Ok "$splatrixBin already in PATH"
+}
+
 # ── Verify ───────────────────────────────────────────────────────
 
 Write-Step "Verification"
@@ -286,10 +298,9 @@ Write-Host "+======================================================+" -Foregroun
 Write-Host "|                                                      |" -ForegroundColor Green
 Write-Host "|   Splatrix installed successfully!                   |" -ForegroundColor Green
 Write-Host "|                                                      |" -ForegroundColor Green
-Write-Host "|   Run:  ~\.splatrix\bin\splatrix.bat                |" -ForegroundColor Green
-Write-Host "|   Or:   ~\.splatrix\bin\splatrix.ps1                |" -ForegroundColor Green
+Write-Host "|   Run:  splatrix                                     |" -ForegroundColor Green
 Write-Host "|                                                      |" -ForegroundColor Green
 Write-Host "+======================================================+" -ForegroundColor Green
 Write-Host ""
-Write-Host "Everything installed in: $SPLATRIX_HOME"
+Write-Host "Open a new terminal and type: splatrix"
 Write-Host ""

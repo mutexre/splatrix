@@ -270,11 +270,49 @@ DESKTOP_EOF
     ok "Desktop entry installed (app menu)"
 fi
 
-# ── macOS app alias (optional) ───────────────────────────────────
+# ── Add to PATH ──────────────────────────────────────────────────
 
-if [[ "$OS" == "Darwin" ]]; then
-    info "To launch from anywhere, add an alias to your shell profile:"
-    echo "    alias splatrix='$SPLATRIX_HOME/bin/splatrix'"
+SPLATRIX_BIN="$SPLATRIX_HOME/bin"
+PATH_LINE="export PATH=\"\$HOME/.splatrix/bin:\$PATH\""
+FISH_PATH_LINE="fish_add_path -g \$HOME/.splatrix/bin"
+ADDED_PATH=false
+
+add_to_file() {
+    local file="$1" line="$2"
+    if [ -f "$file" ] && grep -qF ".splatrix/bin" "$file" 2>/dev/null; then
+        return 0  # already present
+    fi
+    echo "" >> "$file"
+    echo "# Splatrix" >> "$file"
+    echo "$line" >> "$file"
+    return 0
+}
+
+# Detect current shell and patch its profile
+CURRENT_SHELL="$(basename "${SHELL:-/bin/bash}")"
+case "$CURRENT_SHELL" in
+    zsh)
+        add_to_file "$HOME/.zshrc" "$PATH_LINE"
+        ADDED_PATH=true
+        ;;
+    fish)
+        mkdir -p "$HOME/.config/fish"
+        add_to_file "$HOME/.config/fish/config.fish" "$FISH_PATH_LINE"
+        ADDED_PATH=true
+        ;;
+    *)
+        add_to_file "$HOME/.bashrc" "$PATH_LINE"
+        ADDED_PATH=true
+        ;;
+esac
+
+# Also add to .profile for login shells (non-fish)
+if [[ "$CURRENT_SHELL" != "fish" ]] && [ -f "$HOME/.profile" ]; then
+    add_to_file "$HOME/.profile" "$PATH_LINE"
+fi
+
+if $ADDED_PATH; then
+    ok "Added ~/.splatrix/bin to PATH (restart shell or source your profile)"
 fi
 
 # ── Verify ───────────────────────────────────────────────────────
@@ -292,10 +330,9 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}║   ${BOLD}Splatrix installed successfully!${NC}${GREEN}                     ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   Run:  ${CYAN}~/.splatrix/bin/splatrix${NC}${GREEN}                       ║${NC}"
+echo -e "${GREEN}║   Run:  ${CYAN}splatrix${NC}${GREEN}                                       ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "Everything installed in: $SPLATRIX_HOME"
-echo "Nothing outside this directory was modified."
+echo "Restart your shell (or run 'source ~/${CURRENT_SHELL}rc') then type: splatrix"
 echo ""
