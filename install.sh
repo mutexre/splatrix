@@ -238,6 +238,12 @@ micromamba activate splatrix 2>/dev/null || { echo "Error: 'splatrix' env not fo
 
 [[ -n "${CONDA_PREFIX:-}" ]] && export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 
+# Qt platform plugin discovery (needed for pip-installed PyQt6)
+QT6_DIR="$(python -c 'import PyQt6.QtCore; import os; print(os.path.dirname(PyQt6.QtCore.__file__))' 2>/dev/null)"
+if [[ -d "${QT6_DIR}/Qt6/plugins" ]]; then
+    export QT_PLUGIN_PATH="${QT6_DIR}/Qt6/plugins"
+fi
+
 exec python -m splatrix.main_qml "$@"
 LAUNCHER_OUTER
 
