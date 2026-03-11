@@ -753,7 +753,13 @@ class Backend(QObject):
                     if path_val:
                         self._stage_paths[key] = path_val
 
-            # Scan extracted frames
+            # Scan extracted frames — try stored path first, then discover from disk
+            if not self._stage_paths.get('frames'):
+                ws_base = self._project.workspace_dir or (self._workspace / "nerfstudio")
+                candidate = Path(str(ws_base)) / "nerfstudio_data" / "images"
+                if candidate.is_dir() and any(candidate.iterdir()):
+                    self._stage_paths['frames'] = str(candidate)
+                    self._log(f"Discovered frames at {candidate}")
             self._scan_frame_images()
 
             # Load PLY if available
