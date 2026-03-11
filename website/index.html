@@ -1120,9 +1120,9 @@ void main() {
                 var exp = 2.0 / n;
                 var x = a * (ca < 0 ? -1 : 1) * Math.pow(Math.abs(ca), exp);
                 var y = b * (sa < 0 ? -1 : 1) * Math.pow(Math.abs(sa), exp);
-                // Map from [-a..a, -b..b] to [0%,100%]
-                var px = ((x / a + 1) / 2 * 100).toFixed(3);
-                var py = ((y / b + 1) / 2 * 100).toFixed(3);
+                // Map to [0%,100%]: a,b=1 fills box; <1 shrinks; >1 extends beyond
+                var px = ((x + 1) / 2 * 100).toFixed(3);
+                var py = ((y + 1) / 2 * 100).toFixed(3);
                 pts.push(px + '% ' + py + '%');
             }
             return 'polygon(' + pts.join(', ') + ')';
