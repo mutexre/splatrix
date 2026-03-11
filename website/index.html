@@ -581,11 +581,52 @@ float fbm(vec2 p) {
     return v;
 }
 
-// Grid pattern: returns brightness at grid intersections
-float grid(vec2 p, float spacing, float thickness) {
+// Trial division primality test for small integers (GLSL int loop)
+// Returns 1.0 if n is prime, 0.0 otherwise. Works for n up to ~500.
+float isPrime(float n) {
+    if (n < 2.0) return 0.0;
+    if (n < 4.0) return 1.0;
+    if (mod(n, 2.0) < 0.5) return 0.0;
+    if (mod(n, 3.0) < 0.5) return 0.0;
+    // Check up to sqrt(n) — unrolled loop (GLSL needs const bounds)
+    for (int i = 0; i < 12; i++) {
+        float d = float(i) * 6.0;
+        float d1 = d + 5.0;
+        float d2 = d + 7.0;
+        if (d1 * d1 > n) break;
+        if (mod(n, d1) < 0.5) return 0.0;
+        if (mod(n, d2) < 0.5) return 0.0;
+    }
+    return 1.0;
+}
+
+// Map 2D grid cell index to a single integer for primality
+float cellIndex(vec2 cell) {
+    // Cantor pairing with offset to avoid negatives
+    vec2 c = cell + 200.0;
+    return c.x + (c.x + c.y) * (c.x + c.y + 1.0) * 0.5;
+}
+
+// Grid line distance
+float gridLine(vec2 p, float spacing, float thickness) {
     vec2 g = abs(fract(p / spacing - 0.5) - 0.5) * spacing;
-    float d = min(g.x, g.y);
-    return 1.0 - smoothstep(0.0, thickness, d);
+    return 1.0 - smoothstep(0.0, thickness, min(g.x, g.y));
+}
+
+// Edge primality: check if either adjacent cell along an edge is prime
+float edgePrime(vec2 p, float spacing) {
+    vec2 cell = floor(p / spacing);
+    vec2 f = fract(p / spacing);
+    // Horizontal edge (near y grid line)
+    float hy = abs(f.y - 0.5);
+    float hp = max(isPrime(cellIndex(cell)), isPrime(cellIndex(cell + vec2(0.0, -1.0))));
+    // Vertical edge (near x grid line)
+    float hx = abs(f.x - 0.5);
+    float vp = max(isPrime(cellIndex(cell)), isPrime(cellIndex(cell + vec2(-1.0, 0.0))));
+    // Blend: closer to which edge?
+    float edgeX = 1.0 - smoothstep(0.0, 0.08, hx);
+    float edgeY = 1.0 - smoothstep(0.0, 0.08, hy);
+    return edgeX * vp + edgeY * hp;
 }
 
 void main() {
@@ -593,7 +634,7 @@ void main() {
     float aspect = r.x / r.y;
     vec2 p = vec2(uv.x * aspect, uv.y + scroll);
 
-    // Very subtle drifting gaussian blobs
+    // Subtle drifting gaussian blobs
     float s = t * 0.06;
     vec2 c1 = vec2(0.5 * aspect + sin(s * 1.1) * 0.4, 0.5 + cos(s * 0.9) * 0.3);
     vec2 c2 = vec2(0.5 * aspect + cos(s * 0.7) * 0.5, 0.5 + sin(s * 1.3) * 0.35);
@@ -605,7 +646,7 @@ void main() {
     float g3 = exp(-dot(p - c3, p - c3) * 4.0);
     float g4 = exp(-dot(p - c4, p - c4) * 3.5);
 
-    // Cinematic teal and orange — very subdued
+    // Cinematic teal and orange — subdued
     vec3 teal   = vec3(0.03, 0.57, 0.70);
     vec3 orange = vec3(0.92, 0.35, 0.05);
     vec3 deep   = vec3(0.04, 0.04, 0.06);
@@ -616,27 +657,63 @@ void main() {
     col += teal * g3 * 0.08;
     col += orange * g4 * 0.06;
 
-    // Grid shimmer — dark lines with subtle animated glow at intersections
+    // Grid setup
     float spacing = 0.06;
-    float gridVal = grid(p, spacing, 0.001);
+    vec2 cell = floor(p / spacing);
+    vec2 cellCenter = (cell + 0.5) * spacing;
+    float ci = cellIndex(cell);
+    float prime = isPrime(ci);
 
-    // Grid intersection dots — brighter where blobs overlap
+    // Grid lines — base
+    float gl = gridLine(p, spacing, 0.001);
+
+    // Edge intensity driven by prime adjacency
+    float ep = edgePrime(p, spacing);
+
+    // Node (intersection) glow
     vec2 nearest = floor(p / spacing + 0.5) * spacing;
     float distToNode = length(p - nearest);
-    float dot_glow = exp(-distToNode * distToNode * 8000.0);
+    float nodeGlow = exp(-distToNode * distToNode * 8000.0);
 
-    // Animate grid nodes: pulse based on noise + time
-    float pulse = noise(nearest * 10.0 + t * 0.3) * 0.5 + 0.5;
-    pulse *= pulse;
+    // Node primality: intersection is where 4 cells meet — bright if any is prime
+    vec2 nc = floor(nearest / spacing);
+    float nodePrime = max(
+        max(isPrime(cellIndex(nc)), isPrime(cellIndex(nc - vec2(1.0, 0.0)))),
+        max(isPrime(cellIndex(nc - vec2(0.0, 1.0))), isPrime(cellIndex(nc - vec2(1.0, 1.0)))))
+    ;
 
-    // Grid color: teal-ish lines, brighter at blob intersections
+    // Cell interior: prime cells get a faint fill
+    float cellDist = length(p - cellCenter);
+    float cellFill = exp(-cellDist * cellDist * 600.0) * prime;
+
+    // Time-driven pulse: prime cells/edges pulse at different phases
+    float phase = fract(ci * 0.618033988 + t * 0.08);
+    float pulse = smoothstep(0.0, 0.15, phase) * smoothstep(0.5, 0.15, phase);
+    float primePulse = prime * pulse;
+
+    // Blob influence for coloring
     float blobInfluence = g1 + g2 + g3 + g4;
-    vec3 gridColor = mix(vec3(0.08, 0.12, 0.14), teal * 0.4, blobInfluence * 0.3);
 
-    col += gridColor * gridVal * 0.25;
-    col += gridColor * dot_glow * pulse * 0.5;
+    // Assemble grid color
+    vec3 gridBase = vec3(0.06, 0.09, 0.10);
+    vec3 gridPrime = mix(teal * 0.5, orange * 0.5, hash(cell));
 
-    // Vignette — strong to keep edges very dark
+    // Base grid lines
+    col += gridBase * gl * 0.2;
+    // Prime-adjacent edges glow brighter
+    col += gridPrime * gl * ep * 0.3;
+
+    // Prime cell interior soft glow
+    col += gridPrime * cellFill * (0.08 + primePulse * 0.15);
+
+    // Node dots — prime intersections are brighter and pulse
+    col += gridBase * nodeGlow * 0.3;
+    col += gridPrime * nodeGlow * nodePrime * (0.4 + pulse * 0.5);
+
+    // Extra: blob proximity boosts prime cells
+    col += gridPrime * cellFill * blobInfluence * 0.15;
+
+    // Vignette
     float vig = 1.0 - dot((uv - 0.5) * 1.4, (uv - 0.5) * 1.4);
     col *= smoothstep(0.0, 0.5, vig);
 
