@@ -207,7 +207,7 @@
         .hero p::before {
             content: '';
             position: absolute;
-            inset: var(--se-inset-v, -10px) var(--se-inset-h, -13px);
+            inset: var(--se-inset-v, -7px) var(--se-inset-h, -9px);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             background: rgba(10, 10, 15, 0.25);
@@ -1108,7 +1108,7 @@ void main() {
         // True superellipse: |x/a|^n + |y/b|^n = 1
         // n=2 → ellipse, n=4 → squircle (iOS), n→∞ → rectangle
         // a,b = semi-axis scale (1.0 = fill bounding box)
-        var seParams = { n: 8.5, a: 1.0, b: 1.0 };
+        var seParams = { n: 8, a: 1.0, b: 1.0 };
 
         function buildSuperellipsePolygon(n, a, b, numPoints) {
             numPoints = numPoints || 120;
@@ -1145,7 +1145,7 @@ void main() {
         };
 
         // Plaque margin — controls inset of ::before (space around text)
-        var plaqueMargin = 10; // px
+        var plaqueMargin = 7; // px
         function updatePlaqueMargin(px) {
             plaqueMargin = px;
             var heroP = document.querySelector('.hero p');
@@ -1164,7 +1164,8 @@ void main() {
         render();
 
         // Toggle with ` key
-        var visible = true;
+        var visible = false;
+        panel.style.display = 'none';
         document.addEventListener('keydown', function(e) {
             if (e.key === '`') { visible = !visible; panel.style.display = visible ? '' : 'none'; }
         });
