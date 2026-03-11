@@ -590,11 +590,11 @@
 </head>
 <body>
 
-<!-- Superellipse clip path (n≈4 squircle) -->
+<!-- Superellipse clip path — rounded rect with controllable corner radius -->
 <svg width="0" height="0" style="position:absolute">
     <defs>
         <clipPath id="superellipse" clipPathUnits="objectBoundingBox">
-            <path d="M 0.5 0 C 0.99 0, 1 0.01, 1 0.5 C 1 0.99, 0.99 1, 0.5 1 C 0.01 1, 0 0.99, 0 0.5 C 0 0.01, 0.01 0, 0.5 0 Z"/>
+            <rect x="0" y="0" width="1" height="1" rx="0.03" ry="0.03"/>
         </clipPath>
     </defs>
 </svg>
@@ -1044,13 +1044,13 @@ void main() {
             // Superellipse curvature
             html += '<div style="margin:10px 0 8px;border-top:1px solid #333"></div>';
             html += '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Plaque Shape</div>';
-            var sqNorm = Math.round((squircleK - 0.5) / 0.5 * 100);
+            var sqNorm = Math.round(squircleR / 0.5 * 100);
             html += '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
                 '<span style="width:64px;flex-shrink:0">Curve</span>' +
                 '<input type="range" min="0" max="100" value="' + sqNorm + '" ' +
                 'style="flex:1;accent-color:#0891b2;height:4px" ' +
                 'oninput="window._squircleSlider(this.value,this)">' +
-                '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + squircleK.toFixed(3) + '</span></label>';
+                '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + squircleR.toFixed(3) + '</span></label>';
             panel.innerHTML = html;
             // Bind combo
             panel.querySelector('#algo-select').addEventListener('change', function() {
@@ -1098,19 +1098,16 @@ void main() {
             el.parentElement.querySelector('.val').textContent = v.toFixed(2);
         };
 
-        // Superellipse curvature slider
-        var squircleK = 0.99;
-        function updateSuperellipse(k) {
-            squircleK = k;
-            var ik = (1 - k).toFixed(4);
-            var kk = k.toFixed(4);
-            var d = 'M 0.5 0 C ' + kk + ' 0, 1 ' + ik + ', 1 0.5 C 1 ' + kk + ', ' + kk + ' 1, 0.5 1 C ' + ik + ' 1, 0 ' + kk + ', 0 0.5 C 0 ' + ik + ', ' + ik + ' 0, 0.5 0 Z';
-            var pathEl = document.querySelector('#superellipse path');
-            if (pathEl) pathEl.setAttribute('d', d);
+        // Superellipse curvature slider — controls corner radius of clip rect
+        var squircleR = 0.03; // corner radius in objectBoundingBox units (0 = rect, 0.5 = pill)
+        function updateSuperellipse(r) {
+            squircleR = r;
+            var rectEl = document.querySelector('#superellipse rect');
+            if (rectEl) { rectEl.setAttribute('rx', r); rectEl.setAttribute('ry', r); }
         }
 
         window._squircleSlider = function(val, el) {
-            var v = 0.5 + (val / 100) * 0.5; // range 0.50 .. 1.00
+            var v = (val / 100) * 0.5; // range 0.00 .. 0.50
             updateSuperellipse(v);
             el.parentElement.querySelector('.val').textContent = v.toFixed(3);
         };
