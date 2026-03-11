@@ -207,7 +207,7 @@
         .hero p::before {
             content: '';
             position: absolute;
-            inset: -30px -40px;
+            inset: var(--se-inset-v, -30px) var(--se-inset-h, -40px);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             background: rgba(10, 10, 15, 0.25);
@@ -1042,6 +1042,13 @@ void main() {
                 'style="flex:1;accent-color:#0891b2;height:4px" ' +
                 'oninput="window._squircleSlider(this.value,this)">' +
                 '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + superN.toFixed(1) + '</span></label>';
+            var mNorm = Math.round(plaqueMargin / 60 * 100);
+            html += '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;color:#aaa">' +
+                '<span style="width:64px;flex-shrink:0">Margin</span>' +
+                '<input type="range" min="0" max="100" value="' + mNorm + '" ' +
+                'style="flex:1;accent-color:#0891b2;height:4px" ' +
+                'oninput="window._plaqueMargin(this.value,this)">' +
+                '<span class="val" style="width:42px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0">' + plaqueMargin + 'px</span></label>';
             panel.innerHTML = html;
             // Bind combo
             panel.querySelector('#algo-select').addEventListener('change', function() {
@@ -1125,6 +1132,23 @@ void main() {
             v = parseFloat(v.toFixed(1));
             updateSuperellipse(v);
             el.parentElement.querySelector('.val').textContent = v.toFixed(1);
+        };
+
+        // Plaque margin — controls inset of ::before (space around text)
+        var plaqueMargin = 30; // px — matches initial inset value
+        function updatePlaqueMargin(px) {
+            plaqueMargin = px;
+            var heroP = document.querySelector('.hero p');
+            if (heroP) {
+                heroP.style.setProperty('--se-inset-v', '-' + px + 'px');
+                heroP.style.setProperty('--se-inset-h', '-' + Math.round(px * 1.33) + 'px');
+            }
+        }
+
+        window._plaqueMargin = function(val, el) {
+            var v = Math.round((val / 100) * 60); // range 0 .. 60 px
+            updatePlaqueMargin(v);
+            el.parentElement.querySelector('.val').textContent = v + 'px';
         };
 
         render();
