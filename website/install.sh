@@ -371,4 +371,5 @@ INSTALL_SIZE=$(du -sh "$SPLATRIX_HOME" 2>/dev/null | cut -f1)
 echo "Total install size: ${BOLD}${INSTALL_SIZE}${NC}"
 echo ""
 echo "Restart your shell (or run 'source ~/${CURRENT_SHELL}rc') then type: splatrix"
+echo "To uninstall: rm -rf ~/.splatrix"
 echo ""

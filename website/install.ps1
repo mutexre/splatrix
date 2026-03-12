@@ -305,4 +305,5 @@ $installSize = "{0:N2} GB" -f ((Get-ChildItem -Recurse -Force $SPLATRIX_HOME -Er
 Write-Host "Total install size: $installSize"
 Write-Host ""
 Write-Host "Open a new terminal and type: splatrix"
+Write-Host "To uninstall: Remove-Item -Recurse -Force ~\.splatrix"
 Write-Host ""
