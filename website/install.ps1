@@ -301,6 +301,8 @@ Write-Host "|                                                      |" -Foregroun
 Write-Host "|   Run:  splatrix                                     |" -ForegroundColor Green
 Write-Host "|                                                      |" -ForegroundColor Green
 Write-Host "+======================================================+" -ForegroundColor Green
+$installSize = "{0:N2} GB" -f ((Get-ChildItem -Recurse -Force $SPLATRIX_HOME -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1GB)
+Write-Host "Total install size: $installSize"
 Write-Host ""
 Write-Host "Open a new terminal and type: splatrix"
 Write-Host ""
