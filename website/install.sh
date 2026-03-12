@@ -363,19 +363,17 @@ EXEC_EOF
     chmod +x "$APP_MACOS/Splatrix"
 
     # Generate .icns from logo SVG if sips/iconutil available
-    LOGO_SVG="$SPLATRIX_HOME/src/splatrix/qml/icons/app-icon.svg"
-    if [[ ! -f "$LOGO_SVG" ]]; then
-        # Fallback: create a simple logo SVG
-        LOGO_SVG="$APP_RESOURCES/logo.svg"
-        cat > "$LOGO_SVG" << 'SVG_EOF'
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="90" fill="#0a0a0f"/>
-  <rect x="120" y="140" width="160" height="160" rx="8" fill="#0891b2" opacity="0.9" transform="rotate(-8 200 220)"/>
-  <rect x="200" y="180" width="160" height="160" rx="8" fill="#ea580c" opacity="0.85" transform="rotate(6 280 260)"/>
-  <rect x="160" y="220" width="160" height="160" rx="8" fill="#0891b2" opacity="0.7" transform="rotate(-3 240 300)"/>
+    # Use the same logo as the website nav bar
+    LOGO_SVG="$APP_RESOURCES/logo.svg"
+    cat > "$LOGO_SVG" << 'SVG_EOF'
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 32 32">
+  <defs><filter id="sf"><feGaussianBlur stdDeviation="0.8"/></filter></defs>
+  <rect width="32" height="32" rx="7" fill="#0a0a0f"/>
+  <rect x="3" y="5" width="16" height="12" rx="4" fill="#0891b2" opacity="0.85" transform="rotate(-10 11 11)" filter="url(#sf)"/>
+  <rect x="12" y="3" width="14" height="18" rx="4" fill="#ea580c" opacity="0.8" transform="rotate(6 19 12)" filter="url(#sf)"/>
+  <rect x="6" y="16" width="18" height="10" rx="4" fill="#22d3ee" opacity="0.75" transform="rotate(-4 15 21)" filter="url(#sf)"/>
 </svg>
 SVG_EOF
-    fi
 
     ICNS_CREATED=false
     if command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
