@@ -296,7 +296,7 @@ Type=Application
 Name=Splatrix
 Comment=Video to 3D Gaussian Splats
 Exec=$SPLATRIX_HOME/bin/splatrix
-Icon=$SPLATRIX_HOME/src/splatrix/qml/icons/app-icon.svg
+Icon=$SPLATRIX_HOME/src/resources/icon-256.png
 Terminal=false
 Categories=Graphics;3DGraphics;Science;
 DESKTOP_EOF
@@ -362,59 +362,14 @@ exec "$LAUNCHER" "$@"
 EXEC_EOF
     chmod +x "$APP_MACOS/Splatrix"
 
-    # Generate .icns from logo SVG if sips/iconutil available
-    # Use the same logo as the website nav bar
-    LOGO_SVG="$APP_RESOURCES/logo.svg"
-    cat > "$LOGO_SVG" << 'SVG_EOF'
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 32 32">
-  <defs><filter id="sf"><feGaussianBlur stdDeviation="0.8"/></filter></defs>
-  <rect width="32" height="32" rx="7" fill="#0a0a0f"/>
-  <rect x="3" y="5" width="16" height="12" rx="4" fill="#0891b2" opacity="0.85" transform="rotate(-10 11 11)" filter="url(#sf)"/>
-  <rect x="12" y="3" width="14" height="18" rx="4" fill="#ea580c" opacity="0.8" transform="rotate(6 19 12)" filter="url(#sf)"/>
-  <rect x="6" y="16" width="18" height="10" rx="4" fill="#22d3ee" opacity="0.75" transform="rotate(-4 15 21)" filter="url(#sf)"/>
-</svg>
-SVG_EOF
-
-    ICNS_CREATED=false
-    if command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
-        ICONSET_DIR=$(mktemp -d)/Splatrix.iconset
-        mkdir -p "$ICONSET_DIR"
-
-        # Convert SVG to PNG (sips can't read SVG, so try qlmanage or python)
-        PNG_SRC=$(mktemp /tmp/splatrix_icon_XXXXXX.png)
-        if command -v qlmanage >/dev/null 2>&1; then
-            qlmanage -t -s 1024 -o /tmp "$LOGO_SVG" 2>/dev/null
-            QLOUT="/tmp/$(basename "$LOGO_SVG").png"
-            [[ -f "$QLOUT" ]] && mv "$QLOUT" "$PNG_SRC"
-        fi
-
-        if [[ ! -s "$PNG_SRC" ]] && python3 -c "import cairosvg" 2>/dev/null; then
-            python3 -c "import cairosvg; cairosvg.svg2png(url='$LOGO_SVG', write_to='$PNG_SRC', output_width=1024, output_height=1024)" 2>/dev/null
-        fi
-
-        if [[ -s "$PNG_SRC" ]]; then
-            for sz in 16 32 64 128 256 512; do
-                sips -z $sz $sz "$PNG_SRC" --out "$ICONSET_DIR/icon_${sz}x${sz}.png" >/dev/null 2>&1
-            done
-            for sz in 32 64 256 512; do
-                half=$((sz / 2))
-                cp "$ICONSET_DIR/icon_${sz}x${sz}.png" "$ICONSET_DIR/icon_${half}x${half}@2x.png" 2>/dev/null
-            done
-            # 512@2x = 1024
-            sips -z 1024 1024 "$PNG_SRC" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null 2>&1
-
-            if iconutil -c icns -o "$APP_RESOURCES/AppIcon.icns" "$ICONSET_DIR" 2>/dev/null; then
-                ICNS_CREATED=true
-            fi
-        fi
-        rm -rf "$(dirname "$ICONSET_DIR")" "$PNG_SRC" 2>/dev/null
-    fi
-
-    if $ICNS_CREATED; then
+    # Copy pre-built .icns from repo
+    ICNS_SRC="$SPLATRIX_HOME/src/resources/icon.icns"
+    if [[ -f "$ICNS_SRC" ]]; then
+        cp "$ICNS_SRC" "$APP_RESOURCES/AppIcon.icns"
         ok "App bundle: ~/Applications/Splatrix.app (with icon)"
     else
         ok "App bundle: ~/Applications/Splatrix.app"
-        info "Custom icon generation skipped — will use default macOS icon"
+        info "icon.icns not found in source — using default macOS icon"
     fi
 
     # Touch the app so Finder/LaunchServices pick it up

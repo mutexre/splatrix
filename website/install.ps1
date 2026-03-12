@@ -242,6 +242,8 @@ function New-Shortcut($Path) {
         $lnk.TargetPath = "$SPLATRIX_HOME\bin\splatrix.bat"
         $lnk.WorkingDirectory = $SPLATRIX_HOME
         $lnk.Description = "Splatrix - Video to 3D Gaussian Splats"
+        $icoPath = "$SPLATRIX_HOME\src\resources\icon.ico"
+        if (Test-Path $icoPath) { $lnk.IconLocation = "$icoPath,0" }
         $lnk.Save()
         return $true
     } catch { return $false }

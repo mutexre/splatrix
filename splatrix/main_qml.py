@@ -10,17 +10,47 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QFontDatabase, QFont
+from PyQt6.QtGui import QFontDatabase, QFont, QIcon
 from PyQt6.QtWebEngineQuick import QtWebEngineQuick
 
 from .app_controller import AppController
 
 
 def main():
+    # Set process title so it appears as "Splatrix" in Activity Monitor / task manager
+    try:
+        import setproctitle
+        setproctitle.setproctitle("Splatrix")
+    except ImportError:
+        pass
+
     # Must be called before QApplication
     QtWebEngineQuick.initialize()
 
     app = QApplication(sys.argv)
+    app.setApplicationName("Splatrix")
+    app.setApplicationDisplayName("Splatrix")
+    app.setOrganizationName("mutexre")
+    app.setOrganizationDomain("mutexre.github.io")
+
+    # Set application icon (used in Dock, taskbar, window decorations)
+    icon_dir = Path(__file__).parent / "qml" / "icons"
+    for icon_file in ["app-icon.png", "app-icon.svg"]:
+        icon_path = icon_dir / icon_file
+        if icon_path.exists():
+            app.setWindowIcon(QIcon(str(icon_path)))
+            break
+
+    # Also check resources dir (for higher-res icons)
+    res_dir = Path(__file__).parent.parent / "resources"
+    if (res_dir / "icon-256.png").exists():
+        icon = QIcon()
+        for sz in [16, 32, 48, 64, 128, 256, 512, 1024]:
+            p = res_dir / f"icon-{sz}.png"
+            if p.exists():
+                icon.addFile(str(p))
+        if not icon.isNull():
+            app.setWindowIcon(icon)
 
     # Load bundled Inter variable font
     qml_dir = Path(__file__).parent / "qml"
