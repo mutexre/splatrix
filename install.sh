@@ -284,7 +284,7 @@ LAUNCHER_OUTER
 chmod +x "$SPLATRIX_HOME/bin/splatrix"
 ok "Launcher: $SPLATRIX_HOME/bin/splatrix"
 
-# ── Desktop entry (Linux only) ───────────────────────────────────
+# ── App entry ────────────────────────────────────────────────────
 
 if [[ "$OS" == "Linux" ]]; then
     DESKTOP_DIR="$HOME/.local/share/applications"
@@ -302,6 +302,127 @@ Categories=Graphics;3DGraphics;Science;
 DESKTOP_EOF
 
     ok "Desktop entry installed (app menu)"
+
+elif [[ "$OS" == "Darwin" ]]; then
+    step "Create macOS app bundle"
+
+    APP_DIR="$HOME/Applications/Splatrix.app"
+    APP_CONTENTS="$APP_DIR/Contents"
+    APP_MACOS="$APP_CONTENTS/MacOS"
+    APP_RESOURCES="$APP_CONTENTS/Resources"
+
+    mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+
+    # Info.plist — standard macOS app metadata (Homebrew cask compatible)
+    cat > "$APP_CONTENTS/Info.plist" << 'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Splatrix</string>
+    <key>CFBundleDisplayName</key>
+    <string>Splatrix</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.mutexre.splatrix</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleExecutable</key>
+    <string>Splatrix</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>SPTX</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.graphics-design</string>
+</dict>
+</plist>
+PLIST_EOF
+
+    # Executable — thin launcher that delegates to ~/.splatrix/bin/splatrix
+    cat > "$APP_MACOS/Splatrix" << 'EXEC_EOF'
+#!/usr/bin/env bash
+SPLATRIX_HOME="${HOME}/.splatrix"
+LAUNCHER="${SPLATRIX_HOME}/bin/splatrix"
+
+if [[ ! -f "$LAUNCHER" ]]; then
+    osascript -e 'display dialog "Splatrix backend not found.\n\nRun the installer:\ncurl -fsSL https://mutexre.github.io/splatrix/install.sh | bash" buttons {"OK"} default button 1 with title "Splatrix" with icon caution'
+    exit 1
+fi
+
+exec "$LAUNCHER" "$@"
+EXEC_EOF
+    chmod +x "$APP_MACOS/Splatrix"
+
+    # Generate .icns from logo SVG if sips/iconutil available
+    LOGO_SVG="$SPLATRIX_HOME/src/splatrix/qml/icons/app-icon.svg"
+    if [[ ! -f "$LOGO_SVG" ]]; then
+        # Fallback: create a simple logo SVG
+        LOGO_SVG="$APP_RESOURCES/logo.svg"
+        cat > "$LOGO_SVG" << 'SVG_EOF'
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="90" fill="#0a0a0f"/>
+  <rect x="120" y="140" width="160" height="160" rx="8" fill="#0891b2" opacity="0.9" transform="rotate(-8 200 220)"/>
+  <rect x="200" y="180" width="160" height="160" rx="8" fill="#ea580c" opacity="0.85" transform="rotate(6 280 260)"/>
+  <rect x="160" y="220" width="160" height="160" rx="8" fill="#0891b2" opacity="0.7" transform="rotate(-3 240 300)"/>
+</svg>
+SVG_EOF
+    fi
+
+    ICNS_CREATED=false
+    if command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
+        ICONSET_DIR=$(mktemp -d)/Splatrix.iconset
+        mkdir -p "$ICONSET_DIR"
+
+        # Convert SVG to PNG (sips can't read SVG, so try qlmanage or python)
+        PNG_SRC=$(mktemp /tmp/splatrix_icon_XXXXXX.png)
+        if command -v qlmanage >/dev/null 2>&1; then
+            qlmanage -t -s 1024 -o /tmp "$LOGO_SVG" 2>/dev/null
+            QLOUT="/tmp/$(basename "$LOGO_SVG").png"
+            [[ -f "$QLOUT" ]] && mv "$QLOUT" "$PNG_SRC"
+        fi
+
+        if [[ ! -s "$PNG_SRC" ]] && python3 -c "import cairosvg" 2>/dev/null; then
+            python3 -c "import cairosvg; cairosvg.svg2png(url='$LOGO_SVG', write_to='$PNG_SRC', output_width=1024, output_height=1024)" 2>/dev/null
+        fi
+
+        if [[ -s "$PNG_SRC" ]]; then
+            for sz in 16 32 64 128 256 512; do
+                sips -z $sz $sz "$PNG_SRC" --out "$ICONSET_DIR/icon_${sz}x${sz}.png" >/dev/null 2>&1
+            done
+            for sz in 32 64 256 512; do
+                half=$((sz / 2))
+                cp "$ICONSET_DIR/icon_${sz}x${sz}.png" "$ICONSET_DIR/icon_${half}x${half}@2x.png" 2>/dev/null
+            done
+            # 512@2x = 1024
+            sips -z 1024 1024 "$PNG_SRC" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null 2>&1
+
+            if iconutil -c icns -o "$APP_RESOURCES/AppIcon.icns" "$ICONSET_DIR" 2>/dev/null; then
+                ICNS_CREATED=true
+            fi
+        fi
+        rm -rf "$(dirname "$ICONSET_DIR")" "$PNG_SRC" 2>/dev/null
+    fi
+
+    if $ICNS_CREATED; then
+        ok "App bundle: ~/Applications/Splatrix.app (with icon)"
+    else
+        ok "App bundle: ~/Applications/Splatrix.app"
+        info "Custom icon generation skipped — will use default macOS icon"
+    fi
+
+    # Touch the app so Finder/LaunchServices pick it up
+    touch "$APP_DIR"
+    # Register with Launch Services
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DIR" 2>/dev/null || true
 fi
 
 # ── Add to PATH ──────────────────────────────────────────────────
@@ -371,5 +492,9 @@ INSTALL_SIZE=$(du -sh "$SPLATRIX_HOME" 2>/dev/null | cut -f1)
 echo "Total install size: ${BOLD}${INSTALL_SIZE}${NC}"
 echo ""
 echo "Restart your shell (or run 'source ~/${CURRENT_SHELL}rc') then type: splatrix"
-echo "To uninstall: rm -rf ~/.splatrix"
+if [[ "$OS" == "Darwin" ]]; then
+    echo "To uninstall: rm -rf ~/.splatrix ~/Applications/Splatrix.app"
+else
+    echo "To uninstall: rm -rf ~/.splatrix ~/.local/share/applications/splatrix.desktop"
+fi
 echo ""
