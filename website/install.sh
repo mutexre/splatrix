@@ -207,7 +207,7 @@ info "Installing Nerfstudio... (may take a few minutes)"
 pip install nerfstudio -q 2>/dev/null
 ok "Nerfstudio installed"
 
-# Patch nerfstudio colmap_utils to be version-aware (SiftExtraction vs FeatureExtraction)
+# Patch nerfstudio colmap_utils — runtime detection of COLMAP flag names
 COLMAP_UTILS="$(python -c 'import nerfstudio.process_data.colmap_utils as m; print(m.__file__)')"
 if [ -f "$COLMAP_UTILS" ] && ! grep -q "_extract_gpu_flag" "$COLMAP_UTILS"; then
     python -c "
@@ -215,17 +215,26 @@ import pathlib
 p = pathlib.Path('$COLMAP_UTILS')
 t = p.read_text()
 
-# Undo any previous blanket rename (FeatureExtraction->SiftExtraction) so we start clean
+# Undo any previous blanket rename so we start from SiftExtraction everywhere
 t = t.replace('FeatureExtraction.use_gpu', 'SiftExtraction.use_gpu')
 t = t.replace('FeatureMatching.use_gpu', 'SiftMatching.use_gpu')
 
-# Insert version-gated flag variables after 'colmap_version = get_colmap_version(colmap_cmd)'
+# Replace call-site f-strings with variable references BEFORE inserting the block
+t = t.replace('f\"--SiftExtraction.use_gpu {int(gpu)}\"', '_extract_gpu_flag')
+t = t.replace('f\"--SiftMatching.use_gpu {int(gpu)}\"', '_match_gpu_flag')
+
+# Insert runtime detection block after colmap_version line
 old = '    colmap_version = get_colmap_version(colmap_cmd)\n'
 new = '''    colmap_version = get_colmap_version(colmap_cmd)
 
-    # COLMAP 3.11+ renamed SiftExtraction/SiftMatching -> FeatureExtraction/FeatureMatching
-    from packaging.version import Version as _V
-    if colmap_version >= _V(\"3.11\"):
+    # Detect COLMAP flag names at runtime (renamed in newer versions)
+    try:
+        import subprocess as _sp
+        _h = _sp.run([colmap_cmd, \"feature_extractor\", \"-h\"], capture_output=True, text=True, timeout=10)
+        _ht = (_h.stdout or \"\") + (_h.stderr or \"\")
+    except Exception:
+        _ht = \"\"
+    if \"FeatureExtraction\" in _ht:
         _extract_gpu_flag = f\"--FeatureExtraction.use_gpu {int(gpu)}\"
         _match_gpu_flag = f\"--FeatureMatching.use_gpu {int(gpu)}\"
     else:
@@ -235,8 +244,6 @@ new = '''    colmap_version = get_colmap_version(colmap_cmd)
 
 if old in t:
     t = t.replace(old, new, 1)
-    t = t.replace('f\"--SiftExtraction.use_gpu {int(gpu)}\"', '_extract_gpu_flag')
-    t = t.replace('f\"--SiftMatching.use_gpu {int(gpu)}\"', '_match_gpu_flag')
     p.write_text(t)
     print('Patched successfully')
 else:
