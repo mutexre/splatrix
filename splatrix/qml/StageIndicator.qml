@@ -203,10 +203,10 @@ Rectangle {
 
     function _bgColor() {
         switch (status) {
-            case "running":   return Qt.rgba(0.23, 0.51, 0.96, 0.06)
-            case "completed": return Qt.rgba(0.13, 0.77, 0.37, 0.06)
-            case "failed":    return Qt.rgba(0.94, 0.27, 0.27, 0.06)
-            case "cancelled": return Qt.rgba(0.92, 0.70, 0.03, 0.06)
+            case "running":   return Qt.rgba(Theme.running.r, Theme.running.g, Theme.running.b, 0.06)
+            case "completed": return Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.06)
+            case "failed":    return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.06)
+            case "cancelled": return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.06)
             default:          return "transparent"
         }
     }

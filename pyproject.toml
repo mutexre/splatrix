@@ -65,6 +65,7 @@ splatrix = [
     "qml/fonts/*.ttf",
     "qml/icons/*.svg",
     "qml/icons/*.png",
+    "themes/*.yml",
     "viewer/*.html",
 ]
 

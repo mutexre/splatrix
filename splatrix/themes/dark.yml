@@ -1,0 +1,30 @@
+name: Dark
+
+colors:
+  bg: "#0a0a0f"
+  surface: "#12121a"
+  surfaceHover: "#1a1a25"
+  border: "#2a2a3a"
+  borderSubtle: "#1e1e2e"
+  text: "#e4e4ef"
+  textMuted: "#8888a0"
+  accent: "#6366f1"
+  accentHover: "#818cf8"
+  success: "#22c55e"
+  warning: "#eab308"
+  error: "#ef4444"
+  running: "#3b82f6"
+
+typography:
+  fontFamily: Inter
+  fontSizeXs: 12
+  fontSizeSm: 14
+  fontSizeMd: 15
+  fontSizeLg: 18
+
+geometry:
+  radiusSm: 6
+  radiusMd: 8
+  radiusLg: 12
+  spacing: 8
+  spacingLg: 16

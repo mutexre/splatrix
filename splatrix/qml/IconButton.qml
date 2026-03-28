@@ -53,13 +53,14 @@ Button {
         if (variant === "primary")
             return root.hovered ? Theme.accentHover : Theme.accent
         if (variant === "danger")
-            return root.hovered ? Qt.rgba(0.94, 0.27, 0.27, 0.2) : Qt.rgba(0.94, 0.27, 0.27, 0.1)
+            return root.hovered ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2)
+                                : Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.1)
         return root.hovered ? Theme.surfaceHover : Theme.surface
     }
 
     function _borderColor() {
         if (variant === "primary") return "transparent"
-        if (variant === "danger") return Qt.rgba(0.94, 0.27, 0.27, 0.2)
+        if (variant === "danger") return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2)
         return root.hovered ? Theme.border : Theme.borderSubtle
     }
 

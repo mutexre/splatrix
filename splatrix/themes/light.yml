@@ -1,0 +1,30 @@
+name: Light
+
+colors:
+  bg: "#f8f8fc"
+  surface: "#ffffff"
+  surfaceHover: "#f0f0f6"
+  border: "#d4d4de"
+  borderSubtle: "#e6e6f0"
+  text: "#1a1a2e"
+  textMuted: "#6b6b80"
+  accent: "#6366f1"
+  accentHover: "#4f46e5"
+  success: "#16a34a"
+  warning: "#ca8a04"
+  error: "#dc2626"
+  running: "#2563eb"
+
+typography:
+  fontFamily: Inter
+  fontSizeXs: 12
+  fontSizeSm: 14
+  fontSizeMd: 15
+  fontSizeLg: 18
+
+geometry:
+  radiusSm: 6
+  radiusMd: 8
+  radiusLg: 12
+  spacing: 8
+  spacingLg: 16

@@ -136,14 +136,20 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: videoInfoText.implicitHeight + 8
-            color: Qt.rgba(0, 0, 0, 0.6)
+            color: Theme.surface
             visible: backend ? backend.videoInfo !== "" : false
+
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width; height: 1
+                color: Theme.borderSubtle
+            }
 
             Text {
                 id: videoInfoText
                 anchors.centerIn: parent
                 text: backend ? backend.videoInfo : ""
-                color: "#aaa"
+                color: Theme.textMuted
                 font.pixelSize: Theme.fontSizeXs
             }
         }

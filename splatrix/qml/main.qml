@@ -206,7 +206,7 @@ ApplicationWindow {
         width: _tabRow.implicitWidth + 20
         height: 30
         radius: Theme.radiusMd
-        color: isActive ? Qt.rgba(0.39, 0.40, 0.95, 0.15)
+        color: isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
              : _tabMa.containsMouse ? Theme.surfaceHover : "transparent"
 
         Row {

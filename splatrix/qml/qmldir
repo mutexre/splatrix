@@ -1,6 +1,5 @@
 module Splatrix
 
-singleton Theme 1.0 Theme.qml
 Icon 1.0 Icon.qml
 StageIndicator 1.0 StageIndicator.qml
 SectionCard 1.0 SectionCard.qml

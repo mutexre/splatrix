@@ -92,7 +92,7 @@ Item {
                         height: 24
                         radius: Theme.radiusSm
                         color: root.fitMode === index
-                               ? Qt.rgba(0.39, 0.40, 0.95, 0.15)
+                               ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
                                : fitMa.containsMouse ? Theme.surfaceHover : "transparent"
 
                         Text {

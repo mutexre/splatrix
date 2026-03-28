@@ -9,6 +9,8 @@ from PyQt6.QtCore import QObject, QUrl, QStandardPaths
 from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
+from .theme_manager import ThemeManager
+
 
 # Where we persist session state
 SETTINGS_DIR = Path.home() / ".splatrix"
@@ -25,6 +27,7 @@ class AppController(QObject):
         self._windows: list[tuple[QQmlApplicationEngine, "Backend"]] = []
         self._qml_dir = Path(__file__).parent / "qml"
         self._projects_root: Optional[Path] = None
+        self._theme = ThemeManager(parent=self)
         SETTINGS_DIR.mkdir(exist_ok=True)
 
     # ── Projects root directory ───────────────────────────────────────────
@@ -117,6 +120,7 @@ class AppController(QObject):
 
         engine = QQmlApplicationEngine()
         engine.addImportPath(str(self._qml_dir))
+        engine.rootContext().setContextProperty("Theme", self._theme)
         engine.rootContext().setContextProperty("backend", backend)
 
         main_qml = self._qml_dir / "main.qml"
