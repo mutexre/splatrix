@@ -2,7 +2,7 @@
 
 **Convert any video into 3D Gaussian Splats — one click.**
 
-Splatrix is a desktop application that takes a video file and produces a 3D Gaussian Splat in PLY format. It wraps the [Nerfstudio](https://docs.nerf.studio/) pipeline behind an intuitive QML interface with real-time progress tracking, an embedded 3D viewer, and project persistence.
+Splatrix is a desktop application that takes a video file and produces a 3D Gaussian Splat in PLY format. It wraps the [Nerfstudio](https://docs.nerf.studio/) pipeline behind a QML interface with progress tracking, and embedded 3D viewer.
 
 ## Features
 
