@@ -75,43 +75,15 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            // ── Project name + processing indicator ──
-            Row {
-                spacing: 6
+            // ── Project name ──
+            Text {
+                text: backend ? backend.projectName : ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSizeXs
+                font.family: "monospace"
+                elide: Text.ElideRight
+                Layout.maximumWidth: 180
                 Layout.alignment: Qt.AlignVCenter
-
-                Text {
-                    text: backend ? backend.projectName : ""
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.fontSizeXs
-                    font.family: "monospace"
-                    elide: Text.ElideRight
-                    width: Math.min(implicitWidth, 180)
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                // Pulsing dot
-                Rectangle {
-                    width: 6; height: 6; radius: 3
-                    color: Theme.running
-                    visible: backend ? backend.isProcessing : false
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    SequentialAnimation on opacity {
-                        loops: Animation.Infinite
-                        running: backend ? backend.isProcessing : false
-                        NumberAnimation { to: 0.3; duration: 600 }
-                        NumberAnimation { to: 1.0; duration: 600 }
-                    }
-                }
-
-                Text {
-                    text: "Processing"
-                    color: Theme.running
-                    font.pixelSize: Theme.fontSizeXs
-                    visible: backend ? backend.isProcessing : false
-                    anchors.verticalCenter: parent.verticalCenter
-                }
             }
         }
     }

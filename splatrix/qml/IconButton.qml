@@ -46,8 +46,6 @@ Button {
         Behavior on color { ColorAnimation { duration: 150 } }
     }
 
-    opacity: enabled ? 1.0 : 0.4
-
     function _bgColor() {
         if (!enabled) return Theme.surfaceHover
         if (variant === "primary")
@@ -65,6 +63,7 @@ Button {
     }
 
     function _textColor() {
+        if (!enabled) return Theme.textMuted
         if (variant === "primary") return "#ffffff"
         if (variant === "danger") return Theme.error
         return Theme.text
