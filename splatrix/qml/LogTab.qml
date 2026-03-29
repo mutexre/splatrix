@@ -74,7 +74,7 @@ Item {
                     width: logFlick.width
                     text: backend ? backend.logContent : ""
                     color: Theme.textMuted
-                    font.pixelSize: Theme.fontSizeXs
+                    font.pixelSize: Theme.fontSizeSm
                     font.family: "monospace"
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText

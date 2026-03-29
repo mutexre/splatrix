@@ -42,7 +42,6 @@ ApplicationWindow {
 
                 HeaderButton { iconName: "file-plus"; label: "New";  onClicked: backend.newProject() }
                 HeaderButton { iconName: "folder-open"; label: "Open"; onClicked: backend.openProject() }
-                HeaderButton { iconName: "save"; label: "Save"; onClicked: backend.saveProject() }
             }
 
             // Divider
@@ -109,15 +108,21 @@ ApplicationWindow {
 
     // ── Inline components ───────────────────────────────────
 
-    component HeaderButton: Rectangle {
+    component HeaderButton: Item {
         property string iconName: ""
         property string label: ""
         signal clicked()
 
         width: _row.implicitWidth + 16
         height: 30
-        radius: Theme.radiusMd
-        color: _ma.containsMouse ? Theme.surfaceHover : "transparent"
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusMd
+            color: Theme.surfaceHover
+            opacity: _ma.containsMouse ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+        }
 
         Row {
             id: _row
@@ -133,7 +138,7 @@ ApplicationWindow {
             Text {
                 text: label
                 color: _ma.containsMouse ? Theme.text : Theme.textMuted
-                font.pixelSize: Theme.fontSizeXs
+                font.pixelSize: Theme.fontSizeSm
                 font.weight: Font.Medium
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -146,11 +151,9 @@ ApplicationWindow {
             cursorShape: Qt.PointingHandCursor
             onClicked: parent.clicked()
         }
-
-        Behavior on color { ColorAnimation { duration: 150 } }
     }
 
-    component TabButton2: Rectangle {
+    component TabButton2: Item {
         property string iconName: ""
         property string label: ""
         property int tabIndex: 0
@@ -158,9 +161,15 @@ ApplicationWindow {
 
         width: _tabRow.implicitWidth + 20
         height: 30
-        radius: Theme.radiusMd
-        color: isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
-             : _tabMa.containsMouse ? Theme.surfaceHover : "transparent"
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusMd
+            color: isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                            : Theme.surfaceHover
+            opacity: isActive || _tabMa.containsMouse ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+        }
 
         Row {
             id: _tabRow
@@ -189,7 +198,5 @@ ApplicationWindow {
             cursorShape: Qt.PointingHandCursor
             onClicked: tabStack.currentIndex = tabIndex
         }
-
-        Behavior on color { ColorAnimation { duration: 150 } }
     }
 }
