@@ -28,11 +28,12 @@ dependencies = [
     "PyQt6-WebEngine>=6.6.0",
     "psutil>=5.9.0",
     "PyYAML>=6.0",
-    "numpy>=1.24.0",
+    "numpy>=2.0.0",
     "pillow>=10.0.0",
     "plyfile>=1.0.0",
     "av>=12.0.0",
     "setproctitle>=1.3.0",
+    "transitions>=0.9.0",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +61,7 @@ include = ["splatrix*"]
 
 [tool.setuptools.package-data]
 splatrix = [
+    "bootstrap_config.json",
     "qml/*.qml",
     "qml/qmldir",
     "qml/fonts/*.ttf",

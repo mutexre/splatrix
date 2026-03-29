@@ -1,0 +1,6 @@
+{
+  "size_estimates": {
+    "default": "~700 MB",
+    "linux_cuda": "~3.5 GB"
+  }
+}

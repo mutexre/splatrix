@@ -78,6 +78,10 @@ Examples:
 
 ## Coding Patterns
 
+### Type Safety
+- **Prefer Enums over lists of strings** for representing fixed sets of states, categories, or options (e.g. `Stage`, `PipelineState`). Enums provide type safety, IDE support, and a single source of truth.
+- **Use explicit state machines for UI state transitions** (e.g. `transitions` library). Never rely on ad-hoc boolean flags or nullable references to track lifecycle states like idle/running/cancelling. Define states as Enums, transitions as declarative rules, and guard all entry points via the machine.
+
 ## AI Assistant Behavior
 
 ### When Working

@@ -84,6 +84,28 @@ ApplicationWindow {
                 elide: Text.ElideRight
                 Layout.maximumWidth: 180
                 Layout.alignment: Qt.AlignVCenter
+            // Pulsing dot
+            Rectangle {
+                width: 6; height: 6; radius: 3
+                color: backend && backend.pipelineState === "cancelling" ? Theme.warning : Theme.running
+                visible: backend ? backend.pipelineState !== "idle" : false
+                Layout.alignment: Qt.AlignVCenter
+
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    running: backend ? backend.pipelineState !== "idle" : false
+                    NumberAnimation { to: 0.3; duration: 600 }
+                    NumberAnimation { to: 1.0; duration: 600 }
+                }
+            }
+
+            Text {
+                text: backend && backend.pipelineState === "cancelling" ? "Cancelling" : "Processing"
+                color: backend && backend.pipelineState === "cancelling" ? Theme.warning : Theme.running
+                font.pixelSize: Theme.fontSizeXs
+                visible: backend ? backend.pipelineState !== "idle" : false
+                Layout.alignment: Qt.AlignVCenter
+            }
             }
         }
     }

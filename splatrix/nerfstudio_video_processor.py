@@ -11,13 +11,6 @@ import builtins
 
 from .video_processing_base import BaseVideoProcessor, ProcessingConfig
 
-try:
-    from nerfstudio.scripts.process_data import VideoToNerfstudioDataset
-    NERFSTUDIO_AVAILABLE = True
-except ImportError:
-    NERFSTUDIO_AVAILABLE = False
-
-
 class NerfstudioVideoProcessor(BaseVideoProcessor):
     """
     Video processor using nerfstudio's integrated pipeline.
@@ -26,7 +19,9 @@ class NerfstudioVideoProcessor(BaseVideoProcessor):
     
     def __init__(self, config: Optional[ProcessingConfig] = None):
         super().__init__()
-        if not NERFSTUDIO_AVAILABLE:
+        try:
+            from nerfstudio.scripts.process_data import VideoToNerfstudioDataset  # noqa: F401
+        except ImportError:
             raise ImportError("nerfstudio not installed. Install with: pip install nerfstudio")
         
         self.config = config or ProcessingConfig()
@@ -133,7 +128,7 @@ class NerfstudioVideoProcessor(BaseVideoProcessor):
         self._monitor_thread = threading.Thread(target=monitor_frames, daemon=True)
         self._monitor_thread.start()
         
-        # Setup nerfstudio VideoToNerfstudioDataset
+        from nerfstudio.scripts.process_data import VideoToNerfstudioDataset
         processor = VideoToNerfstudioDataset(
             data=Path(video_path),
             output_dir=output_dir,
