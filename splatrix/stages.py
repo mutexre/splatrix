@@ -8,3 +8,9 @@ class Stage(Enum):
     RECONSTRUCTION = "reconstruction"
     TRAINING = "training"
     EXPORT = "export"
+
+
+class PipelineState(Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    CANCELLING = "cancelling"

@@ -60,7 +60,7 @@ Item {
                     IconButton {
                         text: "Select"
                         iconName: "folder-open"
-                        enabled: backend ? !backend.isProcessing : true
+                        enabled: backend ? backend.pipelineState === "idle" : true
                         onClicked: backend.selectVideo()
                     }
 
@@ -99,7 +99,7 @@ Item {
                             from: 0; to: 10000; stepSize: 10
                             editable: true
                             value: backend ? backend.maxFrames : 300
-                            enabled: backend ? !backend.isProcessing : true
+                            enabled: backend ? backend.pipelineState === "idle" : true
                             Layout.fillWidth: true
                             onValueModified: if (backend) backend.maxFrames = value
 
@@ -150,7 +150,7 @@ Item {
                             from: 1000; to: 100000; stepSize: 5000
                             editable: true
                             value: backend ? backend.trainingIterations : 30000
-                            enabled: backend ? !backend.isProcessing : true
+                            enabled: backend ? backend.pipelineState === "idle" : true
                             Layout.fillWidth: true
                             onValueModified: if (backend) backend.trainingIterations = value
 
@@ -209,12 +209,11 @@ Item {
                         detail: s ? s.detail : ""
                         eta: s ? (s.eta || "") : ""
 
-                        // Play enabled when: has video, not processing, and
-                        // all prior stages are completed (or this is stage 0)
                         canPlay: {
-                            if (!backend || !backend.hasVideo || backend.isProcessing)
+                            if (!s || !s.restartable)
                                 return false;
-                            // All earlier stages must be completed
+                            if (!backend || !backend.hasVideo || backend.pipelineState !== "idle")
+                                return false;
                             for (var i = 0; i < index; i++) {
                                 var prev = backend.stages[i];
                                 if (!prev || prev.status !== "completed")
@@ -270,15 +269,15 @@ Item {
                 text: "Start Conversion"
                 variant: "primary"
                 iconName: "play"
-                enabled: backend ? (backend.hasVideo && !backend.isProcessing) : false
+                enabled: backend ? (backend.hasVideo && backend.pipelineState === "idle") : false
                 onClicked: backend.startConversion()
             }
 
             IconButton {
-                text: "Cancel"
+                text: backend && backend.pipelineState === "cancelling" ? "Cancelling..." : "Cancel"
                 variant: "danger"
                 iconName: "square"
-                enabled: backend ? backend.isProcessing : false
+                enabled: backend ? backend.pipelineState === "running" : false
                 onClicked: backend.cancel()
             }
 

@@ -2,7 +2,6 @@
 
 import os
 import re
-import signal
 import sys
 import psutil
 from typing import Optional, Literal
@@ -94,7 +93,6 @@ class VideoProcessingWorker(QThread):
         max_frames: Optional[int] = None
     ):
         super().__init__()
-        self.setTerminationEnabled(True)  # Allow thread termination
         self.video_path = video_path
         self.output_dir = output_dir
         self.sample_rate = sample_rate
@@ -175,7 +173,6 @@ class ReconstructionWorker(QThread):
         method: Literal["colmap", "instant-ngp", "mock"] = "mock"
     ):
         super().__init__()
-        self.setTerminationEnabled(True)
         self.frame_paths = [Path(p) for p in frame_paths]
         self.workspace_dir = workspace_dir
         self.method = method
@@ -256,7 +253,6 @@ class PLYExportWorker(QThread):
     
     def __init__(self, splat_data: dict, output_path: str):
         super().__init__()
-        self.setTerminationEnabled(True)
         self.splat_data = splat_data
         self.output_path = output_path
     
@@ -324,7 +320,6 @@ class NerfstudioWorker(QThread):
         existing_data_dir: Optional[str] = None,    # Resume training from existing data
     ):
         super().__init__()
-        self.setTerminationEnabled(True)  # Allow thread termination
         self.video_path = video_path
         self.workspace_dir = workspace_dir
         self.output_ply_path = output_ply_path
@@ -337,49 +332,41 @@ class NerfstudioWorker(QThread):
         self.existing_checkpoint = existing_checkpoint
         self.existing_data_dir = existing_data_dir
         self._is_cancelled = False
+        self._pre_run_pids: set[int] = set()
     
     def cancel(self):
         """Cancel the operation"""
         self._is_cancelled = True
     
-    def terminate(self):
-        """Override terminate to kill child processes (ffmpeg, colmap, etc)"""
-        self._is_cancelled = True
+    def _kill_child_processes(self):
+        """SIGTERM child processes spawned by this worker (COLMAP, ffmpeg, etc.)
+        so the worker thread unblocks and exits through its normal cleanup path."""
         try:
-            import subprocess
             current_process = psutil.Process(os.getpid())
             children = current_process.children(recursive=True)
-            
-            # Send SIGTERM to children (graceful shutdown)
+            pre = self._pre_run_pids
+
             for child in children:
+                if child.pid in pre:
+                    continue
                 try:
-                    # Redirect stderr to suppress pycolmap stack traces during termination
                     child.terminate()
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
-            
-            # Wait briefly then force kill if still alive
-            gone, alive = psutil.wait_procs(children, timeout=1)
-            for proc in alive:
-                try:
-                    # SIGKILL - no cleanup, immediate termination
-                    proc.kill()
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-            
-            # Suppress the worker's own stderr to hide pycolmap abort messages
-            # (This won't fully suppress them since they're in child processes,
-            #  but documents the behavior)
         except Exception:
-            pass  # Best effort cleanup
-        
-        super().terminate()
+            pass
     
     def _emit_stage(self, stage: Stage, status: str, progress: float):
         self.progress.emit({'stage_key': stage, 'status': status, 'progress': progress})
 
     def run(self):
         """Execute full nerfstudio pipeline"""
+        try:
+            self._pre_run_pids = {
+                p.pid for p in psutil.Process(os.getpid()).children(recursive=True)
+            }
+        except Exception:
+            self._pre_run_pids = set()
         try:
             self.log.emit("Loading ML libraries...")
             init_stage = Stage.TRAINING if self.skip_data_processing else Stage.FRAMES

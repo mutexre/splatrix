@@ -8,17 +8,18 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import (
-    QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl, QVariant
+    QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl, QVariant, QTimer
 )
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QFileDialog, QApplication
+from transitions import Machine, MachineError
 
 from .worker_threads import (
     VideoProcessingWorker, ReconstructionWorker, PLYExportWorker, NerfstudioWorker
 )
 from .video_processor import VideoProcessor
 from .project_manager import ProjectManager
-from .stages import Stage
+from .stages import Stage, PipelineState
 
 # ── Stage labels for QML UI ──────────────────────────────────────────────────
 
@@ -32,6 +33,8 @@ _STAGE_LABELS: dict[Stage, str] = {
 }
 
 _DATA_STAGES = (Stage.FRAMES, Stage.FEATURE_EXTRACT, Stage.FEATURE_MATCH, Stage.RECONSTRUCTION)
+
+_RESTARTABLE_STAGES = frozenset({Stage.FRAMES, Stage.TRAINING, Stage.EXPORT})
 
 
 class Backend(QObject):
@@ -49,6 +52,7 @@ class Backend(QObject):
     maxFramesChanged = pyqtSignal()
     trainingIterationsChanged = pyqtSignal()
     projectDirChanged = pyqtSignal()
+    pipelineStateChanged = pyqtSignal()
     isProcessingChanged = pyqtSignal()
     canExportPlyChanged = pyqtSignal()
     statusTextChanged = pyqtSignal()
@@ -74,10 +78,30 @@ class Backend(QObject):
         self._camera_hint: Optional[dict] = None
         self._frame_images: list[str] = []  # list of file:// URLs for extracted frames
 
+        # Pipeline state machine (idle → running → cancelling → idle)
+        Machine(
+            model=self,
+            states=PipelineState,
+            initial=PipelineState.IDLE,
+            transitions=[
+                {'trigger': 'pipeline_start',   'source': PipelineState.IDLE,       'dest': PipelineState.RUNNING},
+                {'trigger': 'pipeline_cancel',  'source': PipelineState.RUNNING,    'dest': PipelineState.CANCELLING},
+                {'trigger': 'pipeline_finish',  'source': PipelineState.RUNNING,    'dest': PipelineState.IDLE},
+                {'trigger': 'pipeline_finish',  'source': PipelineState.CANCELLING, 'dest': PipelineState.IDLE},
+                {'trigger': 'pipeline_timeout', 'source': PipelineState.CANCELLING, 'dest': PipelineState.IDLE},
+            ],
+            after_state_change='_on_pipeline_state_change',
+        )
+        self._cancel_timer: Optional[QTimer] = None
+
         # Stage state — with ETA tracking
         self._stage_start_times: dict[Stage, float] = {}
         self._stages: list[dict] = [
-            {"key": s.value, "label": _STAGE_LABELS[s], "status": "pending", "progress": 0.0, "detail": ""}
+            {
+                "key": s.value, "label": _STAGE_LABELS[s],
+                "status": "pending", "progress": 0.0, "detail": "",
+                "restartable": s in _RESTARTABLE_STAGES,
+            }
             for s in Stage
         ]
         self._stage_paths: dict[Stage, Optional[str]] = {s: None for s in Stage}
@@ -155,20 +179,19 @@ class Backend(QObject):
     def projectDir(self):
         return str(self._project.project_dir) if self._project.project_dir else ""
 
+    @pyqtProperty(str, notify=pipelineStateChanged)
+    def pipelineState(self):
+        return self.state.value
+
     @pyqtProperty(bool, notify=isProcessingChanged)
     def isProcessing(self):
-        return any([
-            self._nerfstudio_worker and self._nerfstudio_worker.isRunning(),
-            self._video_worker and self._video_worker.isRunning(),
-            self._reconstruction_worker and self._reconstruction_worker.isRunning(),
-            self._export_worker and self._export_worker.isRunning(),
-        ])
+        return self.state is not PipelineState.IDLE
 
     @pyqtProperty(bool, notify=canExportPlyChanged)
     def canExportPly(self):
         ply = self._project.output_ply_path
         return (
-            not self.isProcessing and
+            self.state is PipelineState.IDLE and
             ply is not None and ply.exists()
         )
 
@@ -275,12 +298,17 @@ class Backend(QObject):
         if not self._video_path:
             self._log("Error: No video selected")
             return
+        try:
+            self.pipeline_start()
+        except MachineError:
+            self._log("Pipeline is already running")
+            return
 
-        # Ensure project folder exists
         if not self._project.project_dir:
             self._ensure_project_dir()
             if not self._project.project_dir:
                 self._log("Error: No project directory set")
+                self.pipeline_finish()
                 return
 
         self._log("=" * 50)
@@ -290,7 +318,7 @@ class Backend(QObject):
         resume_point = self._project.get_resume_point()
         if resume_point and resume_point is not Stage.FRAMES:
             self._log(f"Resuming pipeline from: {resume_point.value}")
-            self.startFromStage(resume_point.value)
+            self._start_from_stage_impl(resume_point)
         else:
             self._log("Starting conversion pipeline...")
             self._start_nerfstudio_pipeline()
@@ -307,20 +335,30 @@ class Backend(QObject):
         if not self._video_path:
             self._log("Error: No video selected")
             return
-        if self.isProcessing:
+        try:
+            self.pipeline_start()
+        except MachineError:
+            self._log("Pipeline is already running")
             return
 
         if not self._project.project_dir:
             self._ensure_project_dir()
             if not self._project.project_dir:
                 self._log("Error: No project directory set")
+                self.pipeline_finish()
                 return
 
         self._log("=" * 50)
         self._log(f"Starting pipeline from stage: {stage_key}")
         self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
+        self._start_from_stage_impl(stage)
 
+    def _start_from_stage_impl(self, stage: Stage):
+        """Internal: configure and launch the worker for the given start stage.
+
+        Caller must have already transitioned to RUNNING state.
+        """
         all_stages = list(Stage)
         start_idx = all_stages.index(stage)
         training_idx = all_stages.index(Stage.TRAINING)
@@ -330,6 +368,7 @@ class Backend(QObject):
             checkpoint = self._project.get_training_checkpoint()
             if not checkpoint or not Path(checkpoint).exists():
                 self._log("Error: No training checkpoint found — run training first")
+                self.pipeline_finish()
                 return
             for s in all_stages[:export_idx]:
                 self._set_stage(s, 'completed', '')
@@ -358,9 +397,8 @@ class Backend(QObject):
             data_dir = self._project.get_stage(Stage.RECONSTRUCTION).get('path')
             if not data_dir or not Path(data_dir).exists():
                 self._log("Error: No reconstruction data found — run earlier stages first")
+                self.pipeline_finish()
                 return
-            # Backward compat: old projects stored the colmap subdir;
-            # training needs the parent nerfstudio_data dir that has transforms.json
             data_path = Path(data_dir)
             if not (data_path / "transforms.json").exists() and (data_path.parent / "transforms.json").exists():
                 data_dir = str(data_path.parent)
@@ -382,13 +420,11 @@ class Backend(QObject):
                 existing_data_dir=data_dir,
             )
         else:
-            # Start from beginning (stages 0-3 are COLMAP — atomic unit)
             self._start_nerfstudio_pipeline()
             return
 
         self._connect_nerfstudio_worker()
         self._nerfstudio_worker.start()
-        self._update_button_states()
 
     @pyqtSlot()
     def exportPly(self):
@@ -414,42 +450,28 @@ class Backend(QObject):
 
     @pyqtSlot()
     def cancel(self):
+        try:
+            self.pipeline_cancel()
+        except MachineError:
+            return
+
         self._log("Cancelling operations...")
 
-        if self._nerfstudio_worker and self._nerfstudio_worker.isRunning():
-            self._nerfstudio_worker.cancel()
-            self._nerfstudio_worker.wait(2000)
-            if self._nerfstudio_worker.isRunning():
-                self._nerfstudio_worker.terminate()
-                self._nerfstudio_worker.wait(1000)
+        for worker in (self._nerfstudio_worker, self._video_worker,
+                       self._reconstruction_worker, self._export_worker):
+            if worker and worker.isRunning():
+                worker.cancel()
+                kill = getattr(worker, '_kill_child_processes', None)
+                if kill:
+                    kill()
 
-        if self._video_worker and self._video_worker.isRunning():
-            self._video_worker.cancel()
-            self._video_worker.wait(1000)
-            if self._video_worker.isRunning():
-                self._video_worker.terminate()
-
-        if self._reconstruction_worker and self._reconstruction_worker.isRunning():
-            self._reconstruction_worker.cancel()
-            self._reconstruction_worker.wait(1000)
-            if self._reconstruction_worker.isRunning():
-                self._reconstruction_worker.terminate()
-
-        if self._export_worker and self._export_worker.isRunning():
-            self._export_worker.wait(1000)
-            if self._export_worker.isRunning():
-                self._export_worker.terminate()
-
-        self._log("Operations cancelled")
-        self._set_status("Cancelled")
+        self._set_status("Cancelling...")
 
         for stage in Stage:
             idx = self._stage_index(stage)
             st = self._stages[idx]
             if st["status"] in ("pending", "running"):
                 self._set_stage(stage, "cancelled", "Cancelled")
-
-        self._update_button_states()
 
     @pyqtSlot()
     def windowClosing(self):
@@ -609,8 +631,52 @@ class Backend(QObject):
             return f"~{s}s left"
 
     def _update_button_states(self):
+        self.pipelineStateChanged.emit()
         self.isProcessingChanged.emit()
         self.canExportPlyChanged.emit()
+
+    # ── State machine callbacks (called by transitions lib) ──
+
+    def _on_pipeline_state_change(self):
+        """Dispatched by the transitions Machine after every state change."""
+        self._update_button_states()
+
+        if self.state is PipelineState.CANCELLING:
+            self._cancel_timer = QTimer()
+            self._cancel_timer.setSingleShot(True)
+            self._cancel_timer.timeout.connect(self._on_cancel_timeout)
+            self._cancel_timer.start(10_000)
+
+        elif self.state is PipelineState.IDLE:
+            if self._cancel_timer:
+                self._cancel_timer.stop()
+                self._cancel_timer = None
+            self._disconnect_and_clear_worker()
+
+    def _on_cancel_timeout(self):
+        """Safety net: force back to IDLE if worker never emits finished."""
+        self._log("Cancel timeout — forcing idle state")
+        try:
+            self.pipeline_timeout()
+        except MachineError:
+            pass
+
+    def _disconnect_and_clear_worker(self):
+        """Disconnect signals from current worker and release reference."""
+        w = self._nerfstudio_worker
+        if w:
+            try:
+                w.progress.disconnect(self._on_nerfstudio_progress)
+                w.finished.disconnect(self._on_nerfstudio_finished)
+                w.log.disconnect(self._log)
+                w.stage_data_completed.disconnect(self._on_stage_data_completed)
+                w.stage_training_completed.disconnect(self._on_stage_training_completed)
+            except (TypeError, RuntimeError):
+                pass
+        self._nerfstudio_worker = None
+        self._video_worker = None
+        self._reconstruction_worker = None
+        self._export_worker = None
 
     def _scan_frame_images(self, frames_dir: str = None):
         """Scan extracted frames directory and populate frameImages list."""
@@ -926,7 +992,6 @@ class Backend(QObject):
         )
         self._connect_nerfstudio_worker()
         self._nerfstudio_worker.start()
-        self._update_button_states()
 
     def _connect_nerfstudio_worker(self):
         w = self._nerfstudio_worker
@@ -947,6 +1012,8 @@ class Backend(QObject):
     }
 
     def _on_nerfstudio_progress(self, data: dict):
+        if self.state is not PipelineState.RUNNING:
+            return
         stage = data.get('stage_key')
         if not isinstance(stage, Stage):
             return
@@ -960,7 +1027,17 @@ class Backend(QObject):
             self._set_status("Pipeline complete")
 
     def _on_nerfstudio_finished(self, result: dict):
-        self._nerfstudio_worker = None
+        was_cancelling = self.state is PipelineState.CANCELLING
+
+        try:
+            self.pipeline_finish()
+        except MachineError:
+            pass
+
+        if was_cancelling:
+            self._log("Operations cancelled")
+            self._set_status("Cancelled")
+            return
 
         if result['success']:
             output_path = result['output_path']
@@ -972,7 +1049,6 @@ class Backend(QObject):
             for s in Stage:
                 self._set_stage(s, 'completed', 'Complete')
 
-            # Save project
             if not self._project.is_open:
                 self._project.new_project(video_path=self._video_path, settings=self._current_settings())
             self._project.update_stage(Stage.EXPORT, 'completed', ply_path=output_path)
@@ -987,14 +1063,11 @@ class Backend(QObject):
             self._log(f"Pipeline failed: {result['error']}")
             self._set_status("Pipeline failed")
 
-            # Mark first non-done stage as failed
             for s in Stage:
                 idx = self._stage_index(s)
                 if self._stages[idx]["status"] in ("pending", "running"):
                     self._set_stage(s, 'failed', 'Failed')
                     break
-
-        self._update_button_states()
 
     def _on_stage_data_completed(self, data_dir: str):
         if not self._project.is_open:
@@ -1006,11 +1079,11 @@ class Backend(QObject):
         self._project.update_stage(Stage.FEATURE_MATCH, 'completed')
         self._project.update_stage(Stage.RECONSTRUCTION, 'completed', path=data_dir)
 
-        # Track paths for "Open Folder" buttons
         self._stage_paths[Stage.FRAMES] = images_path
         self._stage_paths[Stage.FEATURE_EXTRACT] = colmap_path
         self._stage_paths[Stage.FEATURE_MATCH] = colmap_path
         self._stage_paths[Stage.RECONSTRUCTION] = data_dir
+        self._scan_frame_images()
         self._auto_save_project()
 
     def _on_stage_training_completed(self, checkpoint_dir: str, latest_checkpoint: str):
@@ -1055,7 +1128,10 @@ class Backend(QObject):
         else:
             self._log(f"Error: {result['error']}")
             self._set_status("Failed")
-            self._update_button_states()
+            try:
+                self.pipeline_finish()
+            except MachineError:
+                pass
 
     def _start_reconstruction(self, frame_paths: list):
         self._log("Stage 2/3: Performing 3D reconstruction...")
@@ -1077,7 +1153,10 @@ class Backend(QObject):
         else:
             self._log(f"Error: {result['error']}")
             self._set_status("Failed")
-            self._update_button_states()
+            try:
+                self.pipeline_finish()
+            except MachineError:
+                pass
 
     def _start_ply_export(self, splat_data: dict):
         self._log("Stage 3/3: Exporting to PLY format...")
@@ -1097,4 +1176,7 @@ class Backend(QObject):
         else:
             self._log(f"Error: {result['error']}")
             self._set_status("Failed")
-        self._update_button_states()
+        try:
+            self.pipeline_finish()
+        except MachineError:
+            pass

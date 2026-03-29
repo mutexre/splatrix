@@ -93,23 +93,23 @@ ApplicationWindow {
                 // Pulsing dot
                 Rectangle {
                     width: 6; height: 6; radius: 3
-                    color: Theme.running
-                    visible: backend ? backend.isProcessing : false
+                    color: backend && backend.pipelineState === "cancelling" ? Theme.warning : Theme.running
+                    visible: backend ? backend.pipelineState !== "idle" : false
                     anchors.verticalCenter: parent.verticalCenter
 
                     SequentialAnimation on opacity {
                         loops: Animation.Infinite
-                        running: backend ? backend.isProcessing : false
+                        running: backend ? backend.pipelineState !== "idle" : false
                         NumberAnimation { to: 0.3; duration: 600 }
                         NumberAnimation { to: 1.0; duration: 600 }
                     }
                 }
 
                 Text {
-                    text: "Processing"
-                    color: Theme.running
+                    text: backend && backend.pipelineState === "cancelling" ? "Cancelling" : "Processing"
+                    color: backend && backend.pipelineState === "cancelling" ? Theme.warning : Theme.running
                     font.pixelSize: Theme.fontSizeXs
-                    visible: backend ? backend.isProcessing : false
+                    visible: backend ? backend.pipelineState !== "idle" : false
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
