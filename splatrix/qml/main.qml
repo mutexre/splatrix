@@ -44,14 +44,6 @@ ApplicationWindow {
                 HeaderButton { iconName: "folder-open"; label: "Open"; onClicked: backend.openProject() }
             }
 
-            // Divider
-            Rectangle {
-                Layout.leftMargin: 10
-                Layout.rightMargin: 10
-                width: 1; height: 20; color: Theme.borderSubtle
-                Layout.alignment: Qt.AlignVCenter
-            }
-
             // ── Spacer — pushes tabs to the right ──
             Item { Layout.fillWidth: true }
 
