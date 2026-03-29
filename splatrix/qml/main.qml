@@ -66,51 +66,10 @@ ApplicationWindow {
                 TabButton2 { iconName: "box";    label: "3D Viewer";     tabIndex: 3 }
                 TabButton2 { iconName: "list";   label: "Log";           tabIndex: 4 }
             }
-
-            // Divider
-            Rectangle {
-                Layout.leftMargin: 10
-                Layout.rightMargin: 10
-                width: 1; height: 20; color: Theme.borderSubtle
-                Layout.alignment: Qt.AlignVCenter
-            }
-
-            // ── Project name ──
-            Text {
-                text: backend ? backend.projectName : ""
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSizeXs
-                font.family: "monospace"
-                elide: Text.ElideRight
-                Layout.maximumWidth: 180
-                Layout.alignment: Qt.AlignVCenter
-            // Pulsing dot
-            Rectangle {
-                width: 6; height: 6; radius: 3
-                color: backend && backend.pipelineState === "cancelling" ? Theme.warning : Theme.running
-                visible: backend ? backend.pipelineState !== "idle" : false
-                Layout.alignment: Qt.AlignVCenter
-
-                SequentialAnimation on opacity {
-                    loops: Animation.Infinite
-                    running: backend ? backend.pipelineState !== "idle" : false
-                    NumberAnimation { to: 0.3; duration: 600 }
-                    NumberAnimation { to: 1.0; duration: 600 }
-                }
-            }
-
-            Text {
-                text: backend && backend.pipelineState === "cancelling" ? "Cancelling" : "Processing"
-                color: backend && backend.pipelineState === "cancelling" ? Theme.warning : Theme.running
-                font.pixelSize: Theme.fontSizeXs
-                visible: backend ? backend.pipelineState !== "idle" : false
-                Layout.alignment: Qt.AlignVCenter
-            }
-            }
         }
     }
 
-    // ── Tab content ─────────────────────────────────────────
+
     StackLayout {
         id: tabStack
         anchors.fill: parent

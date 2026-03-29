@@ -153,8 +153,8 @@
 
 
         .hero h1 {
-            font-size: clamp(40px, 6vw, 72px);
-            font-weight: 800;
+            font-size: var(--hero-font-size, clamp(40px, 6vw, 72px));
+            font-weight: var(--hero-font-weight, 800);
             line-height: 1.1;
             letter-spacing: -0.03em;
             margin-bottom: 20px;
@@ -576,6 +576,7 @@ uniform float uNodeOpacity;
 uniform float uAlgo;
 uniform float uParam1;
 uniform float uParam2;
+uniform float uCellMode;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -847,27 +848,62 @@ void main() {
         max(smoothActivation(nc - vec2(0.0, 1.0), LAYER_NODE, p), smoothActivation(nc - vec2(1.0, 1.0), LAYER_NODE, p)))
     ;
 
-    // Cell interior: prime cells get a faint fill
-    float cellDist = length(p - cellCenter);
-    float cellFill = exp(-cellDist * cellDist * 600.0) * prime;
-
-    // Pulse: each cell has its own phase derived from position hash
     float cellPhase = hash(cell * 31.17);
     float pulse = 0.5 + 0.5 * sin(t * 2.5 + cellPhase * 6.283);
-    float primePulse = prime * pulse;
-
-    // Blob influence for coloring
     float blobInfluence = g1 + g2 + g3 + g4;
 
-    // Per-element colors — each derived from its own position to avoid quadrant splits
     vec3 gridBase  = vec3(0.06, 0.09, 0.10);
-    vec3 cellColor = mix(teal * 0.5, orange * 0.5, hash(cell));
     vec3 edgeColor = mix(teal * 0.4, orange * 0.4, hash(cell * 0.01 + 77.7));
     vec3 nodeColor = mix(teal * 0.6, orange * 0.6, hash(nodeCoord * 17.3));
 
-    // 1. Cell interior soft glow (bottom layer)
-    col += cellColor * cellFill * (0.08 + primePulse * 0.15) * uCellOpacity;
-    col += cellColor * cellFill * blobInfluence * 0.15 * uCellOpacity;
+    if (uCellMode < 0.5) {
+        // Mode 0: Flat squares
+        vec2 cellLocal = abs(p - cellCenter);
+        float halfCell = spacing * 0.5;
+        float edgeSoft = spacing * 0.06;
+        float cellFill = (1.0 - smoothstep(halfCell - edgeSoft, halfCell, max(cellLocal.x, cellLocal.y))) * prime;
+        float primePulse = prime * pulse;
+        vec3 cellColor = mix(teal * 0.5, orange * 0.5, hash(cell));
+        col += cellColor * cellFill * (0.14 + primePulse * 0.06) * uCellOpacity;
+        col += cellColor * cellFill * blobInfluence * 0.10 * uCellOpacity;
+    } else {
+        // Mode 1: Gaussian splats with animated 2x2 covariance
+        vec3 splatAccum = vec3(0.0);
+        for (int iy = -2; iy <= 2; iy++) {
+            for (int ix = -2; ix <= 2; ix++) {
+                vec2 adjCell = cell + vec2(float(ix), float(iy));
+                vec2 adjCenter = (adjCell + 0.5) * spacing;
+                float act = smoothActivation(adjCell, LAYER_CELL, p);
+
+                vec2 d = p - adjCenter;
+
+                // Smooth rotation via value noise — Gaussian-like speed distribution
+                // Each cell traces a unique path through the noise field;
+                // derivative of noise is smooth → most splats drift slowly,
+                // a few rotate moderately. No discontinuities.
+                float nOff = hash(adjCell * 71.3) * 200.0;
+                float nLane = hash(adjCell * 19.7) * 200.0;
+                float angle = hash(adjCell * 47.3) * 6.283
+                    + (noise(vec2(t * 0.04 + nOff, nLane)) - 0.5) * 3.0;
+
+                float sx = spacing * (0.28 + hash(adjCell * 23.71) * 0.24);
+                float sy = spacing * (0.14 + hash(adjCell * 41.03) * 0.18);
+
+                float bPhase = hash(adjCell * 53.7) * 6.283;
+                sx *= 1.0 + 0.35 * sin(t * 0.6 + bPhase);
+                sy *= 1.0 + 0.35 * sin(t * 0.85 + bPhase + 1.7);
+
+                float ca = cos(angle), sa = sin(angle);
+                vec2 rd = vec2(ca * d.x + sa * d.y, -sa * d.x + ca * d.y);
+                float gauss = exp(-0.5 * (rd.x * rd.x / (sx * sx) + rd.y * rd.y / (sy * sy)));
+
+                vec3 splatColor = mix(teal, orange, hash(adjCell));
+                splatAccum += splatColor * gauss * act;
+            }
+        }
+        col += splatAccum * 0.15 * uCellOpacity;
+        col += splatAccum * blobInfluence * 0.08 * uCellOpacity;
+    }
 
     // 2. Grid lines and edges (middle layer)
     col += gridBase * gl * 0.2 * uEdgeOpacity;
@@ -942,6 +978,7 @@ void main() {
     var algoLoc = gl.getUniformLocation(prog, 'uAlgo');
     var p1Loc = gl.getUniformLocation(prog, 'uParam1');
     var p2Loc = gl.getUniformLocation(prog, 'uParam2');
+    var cellModeLoc = gl.getUniformLocation(prog, 'uCellMode');
     var scrollY = 0;
 
     // Algorithm definitions: name, default param1, default param2, param labels/ranges
@@ -962,6 +999,7 @@ void main() {
 
     var algoState = { algo: 0, p1: ALGOS[0].p1.def, p2: ALGOS[0].p2.def };
     var layerOpacity = { cell: 1.0, edge: 0.0, node: 0.0 };
+    var cellMode = 1; // 0 = flat squares, 1 = gaussian splats
 
     window.addEventListener('scroll', function() { scrollY = window.pageYOffset; }, {passive: true});
 
@@ -976,6 +1014,7 @@ void main() {
         gl.uniform1f(algoLoc, algoState.algo);
         gl.uniform1f(p1Loc, algoState.p1);
         gl.uniform1f(p2Loc, algoState.p2);
+        gl.uniform1f(cellModeLoc, cellMode);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         requestAnimationFrame(frame);
     }
@@ -1002,6 +1041,14 @@ void main() {
             // Separator
             html += '<div style="margin:10px 0 8px;border-top:1px solid #333"></div>';
             html += '<div style="margin-bottom:6px;font-weight:600;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.1em">Layers</div>';
+            var CELL_MODES = ['Flat Squares', 'Gaussian Splats'];
+            html += '<label style="display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:12px;color:#aaa">' +
+                '<span style="width:64px;flex-shrink:0">Cells</span>' +
+                '<select id="cell-mode-select" style="flex:1;padding:3px 6px;background:#1a1a24;color:#ccc;border:1px solid #333;border-radius:4px;font-size:11px;font-family:inherit">';
+            for (var cm = 0; cm < CELL_MODES.length; cm++) {
+                html += '<option value="' + cm + '"' + (cm === cellMode ? ' selected' : '') + '>' + CELL_MODES[cm] + '</option>';
+            }
+            html += '</select></label>';
             html += makeLayerSlider('Cells', 'cell');
             html += makeLayerSlider('Edges', 'edge');
             html += makeLayerSlider('Nodes', 'node');
@@ -1039,6 +1086,9 @@ void main() {
                 algoState.p1 = na.p1.def;
                 algoState.p2 = na.p2.def;
                 render();
+            });
+            panel.querySelector('#cell-mode-select').addEventListener('change', function() {
+                cellMode = parseInt(this.value);
             });
         }
 
@@ -1146,6 +1196,224 @@ void main() {
             if (e.key === '`') { visible = !visible; panel.style.display = visible ? '' : 'none'; }
         });
     })();
+})();
+</script>
+
+<!-- Font Picker Overlay (toggle with F key) -->
+<style>
+    #font-picker { display:none;position:fixed;inset:0;z-index:9999;background:rgba(5,5,10,0.94);backdrop-filter:blur(14px);overflow-y:auto;overscroll-behavior:contain }
+    #fp-header { position:sticky;top:0;z-index:2;background:rgba(5,5,10,0.97);border-bottom:1px solid #1e1e2e;padding:14px 24px }
+    #fp-header-inner { max-width:1000px;margin:0 auto }
+    .fp-cats { display:flex;gap:6px;flex-wrap:wrap }
+    .fp-cat { padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;color:#888;background:transparent;border:1px solid #1e1e2e;cursor:pointer;font-family:Inter,sans-serif;transition:all 0.15s;text-transform:uppercase;letter-spacing:0.05em }
+    .fp-cat:hover { border-color:#555;color:#ccc }
+    .fp-cat.active { border-color:#0891b2;color:#22d3ee;background:rgba(8,145,178,0.08) }
+    .fp-ctrl { display:flex;align-items:center;gap:8px;font-size:12px;color:#aaa;font-family:Inter,sans-serif }
+    .fp-ctrl span.lbl { width:48px;flex-shrink:0;color:#666 }
+    .fp-ctrl input[type=range] { flex:1;accent-color:#0891b2;height:4px }
+    .fp-ctrl .val { width:48px;text-align:right;font-variant-numeric:tabular-nums;color:#888;flex-shrink:0 }
+    .fp-item { padding:14px 20px;margin-bottom:1px;border-radius:8px;cursor:pointer;display:flex;align-items:baseline;gap:16px;border:1px solid transparent;transition:background 0.12s,border-color 0.12s }
+    .fp-item:hover { background:rgba(255,255,255,0.04);border-color:#333 }
+    .fp-item.selected { border-color:#0891b2;background:rgba(8,145,178,0.08) }
+    .fp-label { font-size:11px;color:#555;width:140px;flex-shrink:0;font-family:Inter,sans-serif;line-height:1.3 }
+    .fp-label small { display:block;font-size:10px;color:#3a3a4a;margin-top:2px }
+    .fp-preview { color:#e4e4e7;letter-spacing:-0.03em;line-height:1.2;-webkit-text-stroke:0.5px rgba(255,255,255,0.3);transition:font-size 0.15s,font-weight 0.15s }
+    .fp-status { font-size:12px;color:#555;text-align:center;padding:40px }
+</style>
+<div id="font-picker">
+    <div id="fp-header">
+        <div id="fp-header-inner">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:12px;color:#666;font-weight:600;letter-spacing:0.08em;text-transform:uppercase">Font Picker <span style="color:#444">— F to close</span></div>
+                <div id="fp-current" style="font-size:12px;color:#22d3ee"></div>
+            </div>
+            <div style="display:flex;gap:16px;margin-bottom:8px">
+                <div class="fp-ctrl" style="flex:1"><span class="lbl">Weight</span><input type="range" id="fp-weight" min="100" max="900" step="100" value="800"><span class="val" id="fp-weight-val">800</span></div>
+                <div class="fp-ctrl" style="flex:1"><span class="lbl">Size</span><input type="range" id="fp-size" min="20" max="80" step="1" value="44"><span class="val" id="fp-size-val">44px</span></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="fp-cats" id="fp-cats"></div>
+                <div id="fp-count" style="font-size:11px;color:#444;flex-shrink:0"></div>
+            </div>
+        </div>
+    </div>
+    <div style="max-width:1000px;margin:0 auto;padding:8px 24px 40px">
+        <div id="fp-list"></div>
+    </div>
+</div>
+<script>
+(function() {
+    var picker = document.getElementById('font-picker');
+    var listEl = document.getElementById('fp-list');
+    var catsEl = document.getElementById('fp-cats');
+    var countEl = document.getElementById('fp-count');
+    var currentEl = document.getElementById('fp-current');
+    var weightSlider = document.getElementById('fp-weight');
+    var weightVal = document.getElementById('fp-weight-val');
+    var sizeSlider = document.getElementById('fp-size');
+    var sizeVal = document.getElementById('fp-size-val');
+    var allFonts = [], filtered = [], loaded = {}, observer = null;
+    var activeCategory = 'All';
+    var heroH1 = null;
+    var TITLE = 'Video to Gaussian Splats';
+    var fetched = false;
+    var currentWeight = 800, currentSize = 44;
+
+    var CATEGORIES = ['All','Sans Serif','Serif','Display','Monospace','Handwriting'];
+
+    function fetchCatalog() {
+        if (fetched) return Promise.resolve();
+        listEl.innerHTML = '<div class="fp-status">Loading font catalog...</div>';
+        return fetch('fonts-catalog.json')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                allFonts = data.map(function(f) {
+                    return { family: f.f, category: f.c, weights: f.w };
+                });
+                fetched = true;
+            })
+            .catch(function(err) {
+                listEl.innerHTML = '<div class="fp-status" style="color:#f66">Failed: ' + err.message + '</div>';
+            });
+    }
+
+    function closestWeight(weights, target) {
+        var best = weights[0];
+        for (var i = 1; i < weights.length; i++) {
+            if (Math.abs(weights[i] - target) < Math.abs(best - target)) best = weights[i];
+        }
+        return best;
+    }
+
+    function buildCats() {
+        catsEl.innerHTML = CATEGORIES.map(function(c) {
+            return '<button class="fp-cat' + (c === activeCategory ? ' active' : '') + '" data-cat="' + c + '">' + c + '</button>';
+        }).join('');
+        catsEl.querySelectorAll('.fp-cat').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                activeCategory = this.getAttribute('data-cat');
+                catsEl.querySelectorAll('.fp-cat').forEach(function(b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                applyFilter();
+            });
+        });
+    }
+
+    function applyFilter() {
+        filtered = allFonts.filter(function(f) {
+            if (activeCategory !== 'All' && f.category !== activeCategory) return false;
+            return true;
+        });
+        countEl.textContent = filtered.length + ' / ' + allFonts.length;
+        renderList();
+    }
+
+    function renderList() {
+        if (observer) observer.disconnect();
+        var currentFont = heroH1 ? (heroH1.style.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim() : '';
+
+        var html = '';
+        for (var i = 0; i < filtered.length; i++) {
+            var f = filtered[i];
+            var w = closestWeight(f.weights, currentWeight);
+            var sel = f.family === currentFont ? ' selected' : '';
+            html += '<div class="fp-item' + sel + '" data-font="' + f.family + '" data-weights="' + f.weights.join(',') + '">' +
+                '<span class="fp-label">' + f.family + '<small>' + f.category + '</small></span>' +
+                '<span class="fp-preview" style="font-family:\'' + f.family + '\',sans-serif;font-weight:' + w + ';font-size:' + currentSize + 'px">' + TITLE + '</span></div>';
+        }
+        if (!html) html = '<div class="fp-status">No fonts in this category</div>';
+        listEl.innerHTML = html;
+
+        observer = new IntersectionObserver(function(entries) {
+            var batch = [];
+            entries.forEach(function(e) {
+                if (!e.isIntersecting) return;
+                var name = e.target.getAttribute('data-font');
+                var wKey = name + '@' + currentWeight;
+                if (name && !loaded[wKey]) { loaded[wKey] = true; batch.push(e.target); }
+            });
+            if (batch.length) loadBatch(batch);
+        }, { root: picker, rootMargin: '300px 0px' });
+
+        listEl.querySelectorAll('.fp-item').forEach(function(el) {
+            observer.observe(el);
+            el.addEventListener('click', function() {
+                var font = this.getAttribute('data-font');
+                var ws = this.getAttribute('data-weights').split(',').map(Number);
+                var w = closestWeight(ws, currentWeight);
+                ensureLoaded(font, w);
+                heroH1.style.fontFamily = "'" + font + "', sans-serif";
+                heroH1.style.setProperty('--hero-font-weight', w);
+                heroH1.style.setProperty('--hero-font-size', currentSize + 'px');
+                currentEl.textContent = font + ' ' + w + ' / ' + currentSize + 'px';
+                listEl.querySelectorAll('.fp-item').forEach(function(it) { it.classList.remove('selected'); });
+                this.classList.add('selected');
+            });
+        });
+    }
+
+    function ensureLoaded(family, weight) {
+        var key = family + '@' + weight;
+        if (loaded[key]) return;
+        loaded[key] = true;
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family) + ':wght@' + weight + '&display=swap';
+        document.head.appendChild(link);
+    }
+
+    function loadBatch(items) {
+        var families = [];
+        items.forEach(function(el) {
+            var name = el.getAttribute('data-font');
+            var ws = el.getAttribute('data-weights').split(',').map(Number);
+            var w = closestWeight(ws, currentWeight);
+            var key = name + '@' + w;
+            if (!loaded[key]) loaded[key] = true;
+            families.push('family=' + encodeURIComponent(name) + ':wght@' + w);
+        });
+        if (!families.length) return;
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?' + families.join('&') + '&display=swap';
+        document.head.appendChild(link);
+    }
+
+    function updatePreviews() {
+        listEl.querySelectorAll('.fp-preview').forEach(function(el) {
+            el.style.fontSize = currentSize + 'px';
+            el.style.fontWeight = currentWeight;
+        });
+    }
+
+    weightSlider.addEventListener('input', function() {
+        currentWeight = parseInt(this.value);
+        weightVal.textContent = currentWeight;
+        updatePreviews();
+    });
+
+    sizeSlider.addEventListener('input', function() {
+        currentSize = parseInt(this.value);
+        sizeVal.textContent = currentSize + 'px';
+        updatePreviews();
+    });
+
+    var fpVisible = false;
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'f' || e.key === 'F') {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+            fpVisible = !fpVisible;
+            picker.style.display = fpVisible ? 'block' : 'none';
+            document.body.style.overflow = fpVisible ? 'hidden' : '';
+            if (fpVisible) {
+                heroH1 = document.querySelector('.hero h1');
+                var cur = getComputedStyle(heroH1).fontFamily.split(',')[0].replace(/['"]/g, '');
+                currentEl.textContent = cur;
+                buildCats();
+                fetchCatalog().then(function() { applyFilter(); });
+            }
+        }
+    });
 })();
 </script>
 

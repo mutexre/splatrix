@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════════
-#  Splatrix Installer — self-contained, zero system modification
+#  Splatrix Installer
 #
 #  Usage:
 #    curl -fsSL https://mutexre.github.io/splatrix/install.sh | bash
