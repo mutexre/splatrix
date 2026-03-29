@@ -15,9 +15,7 @@ from typing import Optional
 
 import yaml
 
-
-# Stage definitions in pipeline order
-STAGE_ORDER = ['frames', 'feature_extract', 'feature_match', 'reconstruction', 'training', 'export']
+from .stages import Stage
 
 SETTINGS_DIR = Path.home() / ".splatrix"
 RECENT_PROJECTS_FILE = SETTINGS_DIR / "recent_projects.json"
@@ -103,7 +101,7 @@ class ProjectManager:
             },
             'settings': settings or {},
             'stages': {
-                stage: {'status': 'pending'} for stage in STAGE_ORDER
+                s.value: {'status': 'pending'} for s in Stage
             },
         }
         if project_dir:
@@ -196,57 +194,55 @@ class ProjectManager:
         self._ensure_open()
         self._data['settings'] = settings
 
-    def update_stage(self, stage_key: str, status: str, **extra):
+    def update_stage(self, stage: Stage, status: str, **extra):
         """Update a pipeline stage's status and optional metadata."""
         self._ensure_open()
         stages = self._data.setdefault('stages', {})
-        stage = stages.setdefault(stage_key, {})
-        stage['status'] = status
+        entry = stages.setdefault(stage.value, {})
+        entry['status'] = status
 
         if status == 'completed' and 'completed_at' not in extra:
             extra['completed_at'] = datetime.now().isoformat(timespec='seconds')
 
-        stage.update(extra)
+        entry.update(extra)
 
     # ── Query ─────────────────────────────────────────────────────────────────
 
-    def get_stage(self, stage_key: str) -> dict:
-        return self._data.get('stages', {}).get(stage_key, {'status': 'pending'})
+    def get_stage(self, stage: Stage) -> dict:
+        return self._data.get('stages', {}).get(stage.value, {'status': 'pending'})
 
-    def is_stage_completed(self, stage_key: str) -> bool:
-        return self.get_stage(stage_key).get('status') == 'completed'
+    def is_stage_completed(self, stage: Stage) -> bool:
+        return self.get_stage(stage).get('status') == 'completed'
 
-    def get_resume_point(self) -> Optional[str]:
-        """Return the first non-completed stage key, or None if all done."""
-        for stage in STAGE_ORDER:
+    def get_resume_point(self) -> Optional[Stage]:
+        """Return the first non-completed stage, or None if all done."""
+        for stage in Stage:
             if not self.is_stage_completed(stage):
                 return stage
         return None
 
     def can_resume_from_training(self) -> bool:
         """True if training is complete and checkpoint exists"""
-        stage = self.get_stage('training')
-        if stage.get('status') != 'completed':
+        data = self.get_stage(Stage.TRAINING)
+        if data.get('status') != 'completed':
             return False
-        ckpt = stage.get('latest_checkpoint')
+        ckpt = data.get('latest_checkpoint')
         return bool(ckpt and Path(ckpt).exists())
 
     def can_resume_from_data(self) -> bool:
         """True if data processing (COLMAP) is complete"""
-        return (
-            self.is_stage_completed('frames') and
-            self.is_stage_completed('feature_extract') and
-            self.is_stage_completed('feature_match') and
-            self.is_stage_completed('reconstruction')
+        return all(
+            self.is_stage_completed(s)
+            for s in (Stage.FRAMES, Stage.FEATURE_EXTRACT, Stage.FEATURE_MATCH, Stage.RECONSTRUCTION)
         )
 
     def get_training_checkpoint(self) -> Optional[str]:
         """Get latest checkpoint path if available"""
-        return self.get_stage('training').get('latest_checkpoint')
+        return self.get_stage(Stage.TRAINING).get('latest_checkpoint')
 
     def get_export_ply(self) -> Optional[str]:
         """Get exported PLY path if available"""
-        return self.get_stage('export').get('ply_path')
+        return self.get_stage(Stage.EXPORT).get('ply_path')
 
     # ── Recent Projects ───────────────────────────────────────────────────────
 

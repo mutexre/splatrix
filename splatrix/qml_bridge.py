@@ -1,7 +1,6 @@
 """Python ↔ QML bridge: exposes backend state as QObject properties/slots for QML UI."""
 
 import json
-import re
 import shutil
 import sys
 import time
@@ -18,19 +17,21 @@ from .worker_threads import (
     VideoProcessingWorker, ReconstructionWorker, PLYExportWorker, NerfstudioWorker
 )
 from .video_processor import VideoProcessor
-from .project_manager import ProjectManager, STAGE_ORDER
+from .project_manager import ProjectManager
+from .stages import Stage
 
+# ── Stage labels for QML UI ──────────────────────────────────────────────────
 
-# ── Stage model exposed to QML ──────────────────────────────────────────────
+_STAGE_LABELS: dict[Stage, str] = {
+    Stage.FRAMES:          "Frame Extraction",
+    Stage.FEATURE_EXTRACT: "Feature Extraction",
+    Stage.FEATURE_MATCH:   "Feature Matching",
+    Stage.RECONSTRUCTION:  "Sparse Reconstruction",
+    Stage.TRAINING:        "Training",
+    Stage.EXPORT:          "Export PLY",
+}
 
-STAGE_DEFS = [
-    ("frames",          "1. Frame Extraction"),
-    ("feature_extract", "2. Feature Extraction"),
-    ("feature_match",   "3. Feature Matching"),
-    ("reconstruction",  "4. Sparse Reconstruction"),
-    ("training",        "5. Training (Splatfacto)"),
-    ("export",          "6. Export PLY"),
-]
+_DATA_STAGES = (Stage.FRAMES, Stage.FEATURE_EXTRACT, Stage.FEATURE_MATCH, Stage.RECONSTRUCTION)
 
 
 class Backend(QObject):
@@ -74,12 +75,12 @@ class Backend(QObject):
         self._frame_images: list[str] = []  # list of file:// URLs for extracted frames
 
         # Stage state — with ETA tracking
-        self._stage_start_times: dict[str, float] = {}  # key → time.time()
+        self._stage_start_times: dict[Stage, float] = {}
         self._stages: list[dict] = [
-            {"key": key, "label": label, "status": "pending", "progress": 0.0, "detail": ""}
-            for key, label in STAGE_DEFS
+            {"key": s.value, "label": _STAGE_LABELS[s], "status": "pending", "progress": 0.0, "detail": ""}
+            for s in Stage
         ]
-        self._stage_paths: dict[str, Optional[str]] = {k: None for k, _ in STAGE_DEFS}
+        self._stage_paths: dict[Stage, Optional[str]] = {s: None for s in Stage}
 
         # Workspace
         self._workspace = Path.home() / ".splatrix"
@@ -256,9 +257,14 @@ class Backend(QObject):
             self._update_button_states()
 
     @pyqtSlot(str)
-    def openStageFolder(self, stage_key):
+    def openStageFolder(self, stage_key: str):
         """Open file browser for a stage's output directory."""
-        path = self._stage_paths.get(stage_key)
+        try:
+            stage = Stage(stage_key)
+        except ValueError:
+            self._log(f"Unknown stage: {stage_key}")
+            return
+        path = self._stage_paths.get(stage)
         if path and Path(path).exists():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         else:
@@ -278,15 +284,26 @@ class Backend(QObject):
                 return
 
         self._log("=" * 50)
-        self._log("Starting conversion pipeline...")
         self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
 
-        self._start_nerfstudio_pipeline()
+        resume_point = self._project.get_resume_point()
+        if resume_point and resume_point is not Stage.FRAMES:
+            self._log(f"Resuming pipeline from: {resume_point.value}")
+            self.startFromStage(resume_point.value)
+        else:
+            self._log("Starting conversion pipeline...")
+            self._start_nerfstudio_pipeline()
 
     @pyqtSlot(str)
     def startFromStage(self, stage_key: str):
         """Start pipeline from a specific stage, reusing earlier results."""
+        try:
+            stage = Stage(stage_key)
+        except ValueError:
+            self._log(f"Unknown stage: {stage_key}")
+            return
+
         if not self._video_path:
             self._log("Error: No video selected")
             return
@@ -304,22 +321,27 @@ class Backend(QObject):
         self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
 
-        # Determine what to skip based on requested start stage
-        stage_keys = [k for k, _ in STAGE_DEFS]
-        start_idx = stage_keys.index(stage_key) if stage_key in stage_keys else 0
+        all_stages = list(Stage)
+        start_idx = all_stages.index(stage)
+        training_idx = all_stages.index(Stage.TRAINING)
+        export_idx = all_stages.index(Stage.EXPORT)
 
-        if start_idx >= 5:  # export
-            # Need a checkpoint to export from
+        if start_idx >= export_idx:
             checkpoint = self._project.get_training_checkpoint()
             if not checkpoint or not Path(checkpoint).exists():
                 self._log("Error: No training checkpoint found — run training first")
                 return
-            for k in stage_keys[:5]:
-                self._set_stage(k, 'completed', '')
-            self._set_stage('export', 'pending', 'Waiting...')
+            for s in all_stages[:export_idx]:
+                self._set_stage(s, 'completed', '')
+            self._set_stage(Stage.EXPORT, 'pending', 'Waiting...')
             workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
             output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
             max_frames = self._max_frames if self._max_frames > 0 else 300
+            recon_path = self._project.get_stage(Stage.RECONSTRUCTION).get('path')
+            if recon_path and not (Path(recon_path) / "transforms.json").exists():
+                parent = Path(recon_path).parent
+                if (parent / "transforms.json").exists():
+                    recon_path = str(parent)
             self._nerfstudio_worker = NerfstudioWorker(
                 video_path=self._video_path,
                 workspace_dir=workspace,
@@ -330,17 +352,22 @@ class Backend(QObject):
                 skip_data_processing=True,
                 skip_training=True,
                 existing_checkpoint=checkpoint,
-                existing_data_dir=self._project.get_stage('reconstruction').get('path'),
+                existing_data_dir=recon_path,
             )
-        elif start_idx >= 4:  # training
-            data_dir = self._project.get_stage('reconstruction').get('path')
+        elif start_idx >= training_idx:
+            data_dir = self._project.get_stage(Stage.RECONSTRUCTION).get('path')
             if not data_dir or not Path(data_dir).exists():
                 self._log("Error: No reconstruction data found — run earlier stages first")
                 return
-            for k in stage_keys[:4]:
-                self._set_stage(k, 'completed', '')
-            for k in stage_keys[4:]:
-                self._set_stage(k, 'pending', 'Waiting...')
+            # Backward compat: old projects stored the colmap subdir;
+            # training needs the parent nerfstudio_data dir that has transforms.json
+            data_path = Path(data_dir)
+            if not (data_path / "transforms.json").exists() and (data_path.parent / "transforms.json").exists():
+                data_dir = str(data_path.parent)
+            for s in all_stages[:training_idx]:
+                self._set_stage(s, 'completed', '')
+            for s in all_stages[training_idx:]:
+                self._set_stage(s, 'pending', 'Waiting...')
             workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
             output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
             max_frames = self._max_frames if self._max_frames > 0 else 300
@@ -379,7 +406,6 @@ class Backend(QObject):
             return
 
         self._set_last_dir("export_ply", dst)
-        import shutil
         try:
             shutil.copy2(str(src), dst)
             self._log(f"Exported PLY to {dst}")
@@ -417,11 +443,11 @@ class Backend(QObject):
         self._log("Operations cancelled")
         self._set_status("Cancelled")
 
-        for key, _ in STAGE_DEFS:
-            idx = self._stage_index(key)
+        for stage in Stage:
+            idx = self._stage_index(stage)
             st = self._stages[idx]
             if st["status"] in ("pending", "running"):
-                self._set_stage(key, "cancelled", "Cancelled")
+                self._set_stage(stage, "cancelled", "Cancelled")
 
         self._update_button_states()
 
@@ -526,45 +552,46 @@ class Backend(QObject):
         self._status_text = text
         self.statusTextChanged.emit()
 
-    def _stage_index(self, key: str) -> int:
+    def _stage_index(self, stage: Stage) -> int:
+        key = stage.value
         for i, s in enumerate(self._stages):
             if s["key"] == key:
                 return i
         return -1
 
-    def _set_stage(self, key: str, status: str, detail: str = "", progress: float = -1):
-        idx = self._stage_index(key)
+    def _set_stage(self, stage: Stage, status: str, detail: str = "", progress: float = -1):
+        idx = self._stage_index(stage)
         if idx < 0:
             return
-        stage = self._stages[idx]
+        entry = self._stages[idx]
 
         # ETA tracking
-        if status == "running" and key not in self._stage_start_times:
-            self._stage_start_times[key] = time.time()
+        if status == "running" and stage not in self._stage_start_times:
+            self._stage_start_times[stage] = time.time()
         elif status in ("completed", "failed", "cancelled", "pending"):
-            self._stage_start_times.pop(key, None)
+            self._stage_start_times.pop(stage, None)
 
-        stage["status"] = status
+        entry["status"] = status
         if detail:
-            stage["detail"] = detail
+            entry["detail"] = detail
         if progress >= 0:
-            stage["progress"] = progress
+            entry["progress"] = progress
         elif status == "completed":
-            stage["progress"] = 1.0
+            entry["progress"] = 1.0
         elif status == "pending":
-            stage["progress"] = 0.0
+            entry["progress"] = 0.0
 
         # Compute ETA for running stages
         if status == "running" and progress > 0.01:
-            started = self._stage_start_times.get(key)
+            started = self._stage_start_times.get(stage)
             if started:
                 elapsed = time.time() - started
                 eta_s = (elapsed / progress) * (1.0 - progress)
-                stage["eta"] = self._format_eta(eta_s)
+                entry["eta"] = self._format_eta(eta_s)
             else:
-                stage["eta"] = ""
+                entry["eta"] = ""
         else:
-            stage["eta"] = ""
+            entry["eta"] = ""
 
         self.stagesChanged.emit()
 
@@ -588,7 +615,7 @@ class Backend(QObject):
     def _scan_frame_images(self, frames_dir: str = None):
         """Scan extracted frames directory and populate frameImages list."""
         images = []
-        search_dir = frames_dir or self._stage_paths.get('frames')
+        search_dir = frames_dir or self._stage_paths.get(Stage.FRAMES)
         if search_dir:
             d = Path(search_dir)
             if d.is_dir():
@@ -604,10 +631,10 @@ class Backend(QObject):
 
     def _set_data_stage_paths(self, ws_data: Path):
         """Set all data-stage folder paths from the nerfstudio data directory."""
-        self._stage_paths['frames'] = str(ws_data / "images")
-        self._stage_paths['feature_extract'] = str(ws_data / "colmap")
-        self._stage_paths['feature_match'] = str(ws_data / "colmap")
-        self._stage_paths['reconstruction'] = str(ws_data)
+        self._stage_paths[Stage.FRAMES] = str(ws_data / "images")
+        self._stage_paths[Stage.FEATURE_EXTRACT] = str(ws_data / "colmap")
+        self._stage_paths[Stage.FEATURE_MATCH] = str(ws_data / "colmap")
+        self._stage_paths[Stage.RECONSTRUCTION] = str(ws_data)
         self._scan_frame_images()
 
     def _current_settings(self) -> dict:
@@ -675,9 +702,9 @@ class Backend(QObject):
         self._save_settings()
 
         # Reset stage UI
-        for key, _ in STAGE_DEFS:
-            self._set_stage(key, "pending", "")
-            self._stage_paths[key] = None
+        for s in Stage:
+            self._set_stage(s, "pending", "")
+            self._stage_paths[s] = None
 
         self._log(f"New project: {proj_dir}")
         self.windowTitleChanged.emit()
@@ -744,21 +771,21 @@ class Backend(QObject):
                 self.maxFramesChanged.emit()
 
             # Restore stage indicators
-            for key, _ in STAGE_DEFS:
-                stage = self._project.get_stage(key)
-                status = stage.get('status', 'pending')
+            for s in Stage:
+                stage_data = self._project.get_stage(s)
+                status = stage_data.get('status', 'pending')
                 if status == 'completed':
-                    self._set_stage(key, 'completed', 'Complete')
-                    path_val = stage.get('path') or stage.get('ply_path') or stage.get('checkpoint_dir')
+                    self._set_stage(s, 'completed', 'Complete')
+                    path_val = stage_data.get('path') or stage_data.get('ply_path') or stage_data.get('checkpoint_dir')
                     if path_val:
-                        self._stage_paths[key] = path_val
+                        self._stage_paths[s] = path_val
 
             # Scan extracted frames — try stored path first, then discover from disk
-            if not self._stage_paths.get('frames'):
+            if not self._stage_paths.get(Stage.FRAMES):
                 ws_base = self._project.workspace_dir or (self._workspace / "nerfstudio")
                 candidate = Path(str(ws_base)) / "nerfstudio_data" / "images"
                 if candidate.is_dir() and any(candidate.iterdir()):
-                    self._stage_paths['frames'] = str(candidate)
+                    self._stage_paths[Stage.FRAMES] = str(candidate)
                     self._log(f"Discovered frames at {candidate}")
             self._scan_frame_images()
 
@@ -786,7 +813,7 @@ class Backend(QObject):
         try:
             import numpy as np
             # Find transforms.json from reconstruction stage
-            recon_path = self._stage_paths.get('reconstruction')
+            recon_path = self._stage_paths.get(Stage.RECONSTRUCTION)
             if not recon_path:
                 return {}
             transforms_file = Path(recon_path) / "transforms.json"
@@ -879,11 +906,11 @@ class Backend(QObject):
             self._project.update_settings(self._current_settings())
             if self._video_path:
                 self._project.update_input(self._video_path)
-            for s in STAGE_ORDER:
+            for s in Stage:
                 self._project.update_stage(s, 'pending')
 
-        for key, _ in STAGE_DEFS:
-            self._set_stage(key, 'pending', 'Waiting...')
+        for s in Stage:
+            self._set_stage(s, 'pending', 'Waiting...')
 
         max_frames = self._max_frames if self._max_frames > 0 else 300
         workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
@@ -910,121 +937,27 @@ class Backend(QObject):
         w.stage_data_completed.connect(self._on_stage_data_completed)
         w.stage_training_completed.connect(self._on_stage_training_completed)
 
+    _STATUS_LABELS: dict[Stage, str] = {
+        Stage.FRAMES:          "Extracting frames...",
+        Stage.FEATURE_EXTRACT: "Extracting features...",
+        Stage.FEATURE_MATCH:   "Matching features...",
+        Stage.RECONSTRUCTION:  "Building reconstruction...",
+        Stage.TRAINING:        "Training Gaussian Splatting model...",
+        Stage.EXPORT:          "Exporting PLY...",
+    }
+
     def _on_nerfstudio_progress(self, data: dict):
-        stage = data['stage']
-        progress = data.get('progress', 0.0)
-        substage = data.get('substage', '')
-        progress_pct = int(progress * 100)
+        stage = data.get('stage_key')
+        if not isinstance(stage, Stage):
+            return
+        status = data.get('status', 'running')
+        progress = data.get('progress', -1)
+        self._set_stage(stage, status, progress=progress)
 
-        # Status text
-        if "Data" in stage:
-            if progress < 0.15:
-                self._set_status("Extracting frames...")
-            elif progress < 0.30:
-                self._set_status("Extracting features...")
-            elif progress < 0.50:
-                self._set_status("Matching features...")
-            elif progress < 1.0:
-                self._set_status("Building reconstruction...")
-            else:
-                self._set_status("Data processing complete")
-        elif "Training" in stage:
-            self._set_status("Training Gaussian Splatting model...")
-        elif "Export" in stage:
-            self._set_status("Exporting PLY...")
-
-        # Map nerfstudio output to pipeline stages
-        if "Data" in stage:
-            ws_base = self._project.workspace_dir or (self._workspace / "nerfstudio")
-            ws_data = ws_base / "nerfstudio_data"
-
-            if any(x in substage.lower() for x in ["extracting frames", "converting video"]) or (progress < 0.15 and "colmap" not in substage.lower()):
-                target = self._max_frames or 300
-                self._set_stage('frames', 'running', f"Extracting (target: {target})", progress=min(progress / 0.15, 0.99))
-
-            elif "frame extraction complete" in substage.lower() or ("done converting" in substage.lower() and "feature" not in substage.lower()):
-                self._set_stage('frames', 'completed', 'Complete')
-                self._stage_paths['frames'] = str(ws_data / "images")
-
-            elif "extracting features" in substage.lower():
-                self._set_stage('frames', 'completed', 'Complete')
-                self._stage_paths['frames'] = str(ws_data / "images")
-                count_match = re.search(r'\[(\d+)/(\d+)\]', substage)
-                if count_match:
-                    detail = f"{count_match.group(1)}/{count_match.group(2)}"
-                    pct = int(count_match.group(1)) / int(count_match.group(2))
-                else:
-                    detail = "Starting"
-                    pct = 0
-                self._set_stage('feature_extract', 'running', detail, progress=pct)
-
-            elif "matching features" in substage.lower():
-                self._set_stage('frames', 'completed', 'Complete')
-                self._set_stage('feature_extract', 'completed', 'Complete')
-                self._stage_paths['frames'] = str(ws_data / "images")
-                self._stage_paths['feature_extract'] = str(ws_data / "colmap")
-                count_match = re.search(r'\[(\d+)/(\d+)\]', substage)
-                if count_match:
-                    detail = f"{count_match.group(1)}/{count_match.group(2)}"
-                    pct = int(count_match.group(1)) / int(count_match.group(2))
-                else:
-                    detail = "Starting"
-                    pct = 0
-                self._set_stage('feature_match', 'running', detail, progress=pct)
-
-            elif any(x in substage.lower() for x in ["reconstruction", "bundle adjustment", "refining", "registering"]):
-                self._set_stage('frames', 'completed', 'Complete')
-                self._set_stage('feature_extract', 'completed', 'Complete')
-                self._set_stage('feature_match', 'completed', 'Complete')
-                self._stage_paths['frames'] = str(ws_data / "images")
-                self._stage_paths['feature_extract'] = str(ws_data / "colmap")
-                self._stage_paths['feature_match'] = str(ws_data / "colmap")
-                if "bundle" in substage.lower():
-                    detail = "Optimizing"
-                elif "refining" in substage.lower():
-                    detail = "Refining"
-                else:
-                    count_match = re.search(r'\[(\d+)\s+images?\]', substage)
-                    detail = f"{count_match.group(1)} registered" if count_match else "Running"
-                self._set_stage('reconstruction', 'running', detail, progress=0.5)
-
-            elif "feature extraction complete" in substage.lower():
-                self._set_stage('feature_extract', 'completed', 'Complete')
-
-            elif "feature matching complete" in substage.lower():
-                self._set_stage('feature_match', 'completed', 'Complete')
-
-            elif "colmap" in substage.lower() and "complete" in substage.lower():
-                for k in ['frames', 'feature_extract', 'feature_match', 'reconstruction']:
-                    self._set_stage(k, 'completed', 'Complete')
-                self._set_data_stage_paths(ws_data)
-
-            elif progress >= 1.0 or "all done" in substage.lower() or "congrats" in substage.lower():
-                for k in ['frames', 'feature_extract', 'feature_match', 'reconstruction']:
-                    self._set_stage(k, 'completed', 'Complete')
-                self._set_data_stage_paths(ws_data)
-
-        elif "Training" in stage:
-            step_match = re.search(r'Step (\d+)/(\d+)', substage)
-            if step_match:
-                detail = f"{step_match.group(1)}/{step_match.group(2)}"
-            else:
-                detail = substage[:50] if substage else "Running"
-
-            status = 'running' if progress < 1.0 else 'completed'
-            self._set_stage('training', status, detail, progress=progress)
-
-            if progress > 0:
-                for k in ['frames', 'feature_extract', 'feature_match', 'reconstruction']:
-                    self._set_stage(k, 'completed', 'Complete')
-
-        elif "Export" in stage:
-            detail = substage[:50] if substage else f"{progress_pct}%"
-            status = 'running' if progress < 1.0 else 'completed'
-            self._set_stage('export', status, detail, progress=progress)
-
-            if progress > 0:
-                self._set_stage('training', 'completed', 'Complete')
+        if status == 'running':
+            self._set_status(self._STATUS_LABELS.get(stage, "Processing..."))
+        elif status == 'completed' and stage is Stage.EXPORT:
+            self._set_status("Pipeline complete")
 
     def _on_nerfstudio_finished(self, result: dict):
         self._nerfstudio_worker = None
@@ -1036,14 +969,14 @@ class Backend(QObject):
             self._log(f"Output PLY: {output_path}")
             self._set_status("Pipeline complete")
 
-            for key, _ in STAGE_DEFS:
-                self._set_stage(key, 'completed', 'Complete')
+            for s in Stage:
+                self._set_stage(s, 'completed', 'Complete')
 
             # Save project
             if not self._project.is_open:
                 self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-            self._project.update_stage('export', 'completed', ply_path=output_path)
-            self._stage_paths['export'] = str(Path(output_path).parent)
+            self._project.update_stage(Stage.EXPORT, 'completed', ply_path=output_path)
+            self._stage_paths[Stage.EXPORT] = str(Path(output_path).parent)
             self._auto_save_project()
             self.windowTitleChanged.emit()
             self.projectNameChanged.emit()
@@ -1055,10 +988,10 @@ class Backend(QObject):
             self._set_status("Pipeline failed")
 
             # Mark first non-done stage as failed
-            for key, _ in STAGE_DEFS:
-                idx = self._stage_index(key)
+            for s in Stage:
+                idx = self._stage_index(s)
                 if self._stages[idx]["status"] in ("pending", "running"):
-                    self._set_stage(key, 'failed', 'Failed')
+                    self._set_stage(s, 'failed', 'Failed')
                     break
 
         self._update_button_states()
@@ -1068,28 +1001,28 @@ class Backend(QObject):
             self._project.new_project(video_path=self._video_path, settings=self._current_settings())
         images_path = str(Path(data_dir) / "images")
         colmap_path = str(Path(data_dir) / "colmap")
-        self._project.update_stage('frames', 'completed', path=images_path)
-        self._project.update_stage('feature_extract', 'completed')
-        self._project.update_stage('feature_match', 'completed')
-        self._project.update_stage('reconstruction', 'completed', path=colmap_path)
+        self._project.update_stage(Stage.FRAMES, 'completed', path=images_path)
+        self._project.update_stage(Stage.FEATURE_EXTRACT, 'completed')
+        self._project.update_stage(Stage.FEATURE_MATCH, 'completed')
+        self._project.update_stage(Stage.RECONSTRUCTION, 'completed', path=data_dir)
 
         # Track paths for "Open Folder" buttons
-        self._stage_paths['frames'] = images_path
-        self._stage_paths['feature_extract'] = colmap_path
-        self._stage_paths['feature_match'] = colmap_path
-        self._stage_paths['reconstruction'] = data_dir
+        self._stage_paths[Stage.FRAMES] = images_path
+        self._stage_paths[Stage.FEATURE_EXTRACT] = colmap_path
+        self._stage_paths[Stage.FEATURE_MATCH] = colmap_path
+        self._stage_paths[Stage.RECONSTRUCTION] = data_dir
         self._auto_save_project()
 
     def _on_stage_training_completed(self, checkpoint_dir: str, latest_checkpoint: str):
         if not self._project.is_open:
             self._project.new_project(video_path=self._video_path, settings=self._current_settings())
         self._project.update_stage(
-            'training', 'completed',
+            Stage.TRAINING, 'completed',
             checkpoint_dir=checkpoint_dir,
             latest_checkpoint=latest_checkpoint,
         )
         # Track path for "Open Folder" button
-        self._stage_paths['training'] = checkpoint_dir
+        self._stage_paths[Stage.TRAINING] = checkpoint_dir
         self._auto_save_project()
         self._update_button_states()
 
