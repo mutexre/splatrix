@@ -1,0 +1,10 @@
+targets:
+  server: conda run -n splatrix --no-capture-output python -m splatrix.server
+  app: conda run -n splatrix --no-capture-output python run.py
+  test: conda run -n splatrix --no-capture-output pytest
+  install: conda run -n splatrix --no-capture-output pip install -e ".[dev]"
+
+groups:
+  run:
+    - server
+    - app

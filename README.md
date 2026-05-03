@@ -126,50 +126,31 @@ make clean       # remove build artefacts and Python caches
 All targets use `conda run -n splatrix --no-capture-output ...`, so they work
 whether or not the conda env is currently activated.
 
-### Cross-worktree `run` dispatcher
+### Cross-worktree dispatch with `wt`
 
-`scripts/run` is a single-file Python tool that resolves a `SPLAT-N` ticket to
-its git worktree path and dispatches `make run` there. Useful when juggling
-multiple tickets across worktrees.
+The cross-worktree dispatcher (launch / stop / status / logs / path / open
+across all SPLAT-N worktrees) lives in a separate, project-agnostic tool:
+[`wt`](https://github.com/mutexre/wt) (or wherever you have it cloned).
 
-**Setup (one time):**
-
-```bash
-ln -s "$PWD/scripts/run" /usr/local/bin/run
-```
-
-The script auto-detects the splatrix main repo via its own location. Override
-with `SPLATRIX_REPO=<path>` env var or write `SPLATRIX_REPO=<path>` into
-`~/.config/splatrix/run.conf`.
-
-**Commands:**
-
-```
-run                       run ls
-run ls | list             show worktrees (ticket / branch / path)
-run <ticket>              cd + launch app for ticket (foreground)
-run -d <ticket>           launch detached; rejects if already running
-run -d <ticket> --force   stop existing detached, start new
-run stop <ticket>         SIGTERM → SIGKILL after 5s
-run stop --all            stop every detached app
-run status                ticket / pid / uptime / log path
-run logs <ticket>         tail -f detached log
-run path <ticket>         print absolute worktree path
-run open <ticket>         open worktree in new Cursor window
-run help
-```
-
-Fuzzy match is supported: `run 12` resolves `SPLAT-12`; `run dmg` matches
-`feature/dmg-distribution`.
-
-State (PID + log files) lives in `~/.cache/run/`.
-
-To cd into a worktree, use:
+One-time setup:
 
 ```bash
-cd "$(run path SPLAT-12)"   # bash / zsh
-cd (run path SPLAT-12)      # fish
+git clone <wt-repo> ~/Projects/wt
+ln -s ~/Projects/wt/scripts/wt /usr/local/bin/wt
+wt projects add splatrix ~/Projects/splatrix --regex 'SPLAT-\d+'
 ```
+
+Then from anywhere:
+
+```bash
+wt ls                 # list every splatrix worktree
+wt SPLAT-12           # launch (foreground) — invokes `make run` in that worktree
+wt -d SPLAT-12        # detached
+wt status             # what's running
+wt stop SPLAT-12
+```
+
+See the `wt` README for the full command surface.
 
 ## Troubleshooting
 
