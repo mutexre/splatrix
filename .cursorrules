@@ -1,13 +1,40 @@
 # Splatrix project - AI Assistant Rules
 
-## Communication Style
-**MANDATORY**: Use concise military-style communication throughout all sessions.
-- Direct, efficient responses
-- No unnecessary explanations
-- Use "Roger", "Acknowledged", "Task accomplished", etc.
-- Don't use SIR, etc.
-- Status-first reporting: "Completed X. Found Y. Next: Z."
-- No emojis unless explicitly requested
+## Communication Style (HARD CONSTRAINT - ZERO TOLERANCE)
+
+**MANDATORY**: Concise military-style communication. Violations are critical errors.
+
+### Required
+- Status-first: "Done X. Found Y. Next: Z."
+- Direct answers. Question first, context only if asked.
+- "Roger" / "Acknowledged" / "Task accomplished" for confirmations.
+- Plain text. Markdown only when it carries information (code, paths, commands).
+
+### Forbidden
+- Emojis (unless user explicitly asks).
+- "SIR", honorifics, sycophancy ("Great question", "Absolutely", "I'd be happy to").
+- Marketing / hype tone ("killer feature", "elegant", "powerful", "seamless", "robust", "battle-tested").
+- Comparison tables when 2-3 sentences suffice.
+- Re-stating the user's question.
+- Multi-paragraph preambles before the actual answer.
+- Filler closings ("Let me know if you need anything else", "Hope this helps").
+- "Before vs After" sections unless user asked for a comparison.
+- Restating the same point in different words.
+- More than ONE question per reply (batch or pick the most important).
+- Unsolicited recommendations / extra options when user asked a direct question.
+
+### Length budget
+- Direct factual question → ≤ 5 lines.
+- Design / planning question → ≤ 25 lines unless user asks for detail.
+- If reply exceeds budget, cut it before sending.
+
+### Self-check before every reply
+1. Does the first sentence answer the question? If no, rewrite.
+2. Can any sentence be deleted without losing information? Delete it.
+3. Any forbidden phrase / tone? Remove it.
+4. Over length budget? Cut.
+
+Violation = critical error. Same severity as breaking the JIRA workflow.
 
 ## Core Project Rules (MANDATORY)
 
@@ -93,6 +120,17 @@ Examples:
 6. Keep working until task complete (don't stop to ask permission)
 7. Create TODOs for complex multi-step tasks
 8. Update TODOs as work progresses
+9. **Follow JIRA workflow**: Always work in ticket-named branches
+10. **Update JIRA** with concise progress comments during work
+
+### Ticket Management
+- **Discuss ticket creation/deletion** with user BEFORE executing
+- Never create/delete tickets without user approval
+- **CRITICAL**: After creating a ticket, STOP and wait for user to approve starting work
+- Only begin implementation when user explicitly agrees
+- Update tickets with progress using concise comments
+- Move ticket to "In Review" when implementation complete
+- Wait for user to verify and approve before merging to main
 
 ### When Uncertain
 1. Ask clarifying questions (concisely)
@@ -125,6 +163,87 @@ Examples:
 - Use inline documentation
 - Explain in chat response, don't create file
 
+### 5. JIRA & Git Workflow (MANDATORY)
+
+**CRITICAL - TICKET PROGRESSION RULE:**
+- **NEVER start a new ticket without explicit user approval after testing the previous one**
+- After completing implementation and moving ticket to "In Review":
+  1. STOP and wait for user to test
+  2. User will say "Testing OK", "Looks good", "Approved", or similar
+  3. ONLY THEN merge to main
+  4. STOP AGAIN and wait for explicit instruction to start next ticket
+  5. User will say "Start SPLAT-XX" or "Next" or "Continue" to begin new work
+- **VIOLATION OF THIS RULE IS CRITICAL ERROR**
+
+**JIRA Ticket Management:**
+- **Always discuss** ticket creation/deletion with user before executing
+- JIRA space: **SPLAT** (Splatrix project)
+- Site: `mutexre.atlassian.net`
+- Cloud ID: `c5732911-9ca0-495f-9851-70b43964e51f`
+- Issue types: Epic, Task, Subtask
+- Update tickets with **concise comments** on progress/blockers
+- Access via Atlassian MCP tools
+
+**Branch Naming Convention:**
+- Format: `{type}/{ticket-id}-{short-description}`
+- Examples:
+  - `feature/SPLAT-8-separate-stage-requests`
+  - `fix/SPLAT-7-folder-button-visibility`
+  - `bugfix/SPLAT-1-qml-reactivity`
+
+**Development Workflow:**
+1. **Create ticket** (discuss with user first)
+   - Write description with acceptance criteria
+   - Set priority, labels
+   - Move to "To Do" status
+
+2. **Create branch** from main
+   ```bash
+   git checkout main && git pull
+   git switch -c feature/SPLAT-XX-description
+   ```
+
+3. **Implement** changes
+   - Commit frequently with descriptive messages
+   - Reference ticket in commits: "SPLAT-XX: Description"
+   - Update JIRA with progress comments
+
+4. **Complete implementation**
+   - Commit all changes
+   - Update JIRA: Move to **"In Review"** state
+   - Notify user: "SPLAT-XX ready for testing"
+
+5. **User testing** (user responsibility)
+   - User tests functionality
+   - If issues found, user comments and returns to "In Progress"
+
+6. **Merge to main** (only after user approval)
+   ```bash
+   git checkout main
+   git merge --no-ff feature/SPLAT-XX-description
+   git push
+   ```
+   **CRITICAL**: Always use `--no-ff` flag for explicit merge commits
+
+7. **Close ticket**
+   - Update JIRA: Move to **"Done"**
+   - Add final comment with merge commit hash
+   - **Keep feature branches** (do not delete after merge)
+
+**JIRA Transition IDs (SPLAT Project):**
+- Verify with `getTransitionsForJiraIssue` on first issue — next-gen projects typically use:
+  - 11: To Do
+  - 21: In Progress
+  - 31: In Review
+  - 41: Done
+
+**Git Rules:**
+- Main branch must be **always stable**
+- Never merge unverified code to main
+- Commit messages: descriptive, reference SPLAT-XX
+- Never force push to main/master without explicit user request
+- Create separate branches for each ticket
+
 ## Quick Commands
 
 ### Run UI
@@ -138,6 +257,6 @@ python run.py
 
 ---
 
-**Last Updated**: 2025-12-11
+**Last Updated**: 2026-05-03
 **Review Before**: Every major change to UI, trainer, or dataset code
 

@@ -109,6 +109,68 @@ pip install -e ".[dev]"
 python run.py
 ```
 
+### Per-worktree `Makefile`
+
+Inside any worktree:
+
+```bash
+make help        # list targets
+make run         # start server (background) + GUI (foreground); server killed on app exit
+make app         # GUI only (foreground)
+make server      # processing server only (foreground)
+make test        # pytest
+make install     # pip install -e ".[dev]" inside the splatrix env
+make clean       # remove build artefacts and Python caches
+```
+
+All targets use `conda run -n splatrix --no-capture-output ...`, so they work
+whether or not the conda env is currently activated.
+
+### Cross-worktree `run` dispatcher
+
+`scripts/run` is a single-file Python tool that resolves a `SPLAT-N` ticket to
+its git worktree path and dispatches `make run` there. Useful when juggling
+multiple tickets across worktrees.
+
+**Setup (one time):**
+
+```bash
+ln -s "$PWD/scripts/run" /usr/local/bin/run
+```
+
+The script auto-detects the splatrix main repo via its own location. Override
+with `SPLATRIX_REPO=<path>` env var or write `SPLATRIX_REPO=<path>` into
+`~/.config/splatrix/run.conf`.
+
+**Commands:**
+
+```
+run                       run ls
+run ls | list             show worktrees (ticket / branch / path)
+run <ticket>              cd + launch app for ticket (foreground)
+run -d <ticket>           launch detached; rejects if already running
+run -d <ticket> --force   stop existing detached, start new
+run stop <ticket>         SIGTERM → SIGKILL after 5s
+run stop --all            stop every detached app
+run status                ticket / pid / uptime / log path
+run logs <ticket>         tail -f detached log
+run path <ticket>         print absolute worktree path
+run open <ticket>         open worktree in new Cursor window
+run help
+```
+
+Fuzzy match is supported: `run 12` resolves `SPLAT-12`; `run dmg` matches
+`feature/dmg-distribution`.
+
+State (PID + log files) lives in `~/.cache/run/`.
+
+To cd into a worktree, use:
+
+```bash
+cd "$(run path SPLAT-12)"   # bash / zsh
+cd (run path SPLAT-12)      # fish
+```
+
 ## Troubleshooting
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
