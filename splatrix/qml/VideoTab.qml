@@ -169,9 +169,13 @@ Item {
         }
 
         onMediaStatusChanged: {
-            if (_pendingFirstFrame && mediaStatus === MediaPlayer.LoadedMedia) {
-                _pendingFirstFrame = false
+            if (_pendingFirstFrame && mediaStatus === MediaPlayer.LoadedMedia)
                 player.play()
+        }
+
+        onPlaybackStateChanged: {
+            if (_pendingFirstFrame && playbackState === MediaPlayer.PlayingState) {
+                _pendingFirstFrame = false
                 player.pause()
             }
         }
