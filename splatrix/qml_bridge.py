@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import (
-    QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl, QVariant, QTimer
+    QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl, QUrlQuery, QVariant, QTimer
 )
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QFileDialog, QApplication
@@ -938,16 +938,23 @@ class Backend(QObject):
                 camera_hint = self._compute_camera_hint()
 
             url = QUrl.fromLocalFile(str(self._viewer_html))
-            query = f"ply=file://{ply}"
+            q = QUrlQuery()
+            ply_url = QUrl.fromLocalFile(str(ply))
+            q.addQueryItem("ply", ply_url.toString(QUrl.ComponentFormattingOption.FullyEncoded))
             if camera_hint:
                 c = camera_hint.get("centroid", [0, 0, 0])
                 r = camera_hint.get("radius", 5)
-                query += f"&cx={c[0]:.3f}&cy={c[1]:.3f}&cz={c[2]:.3f}&r={r:.3f}"
+                q.addQueryItem("cx", f"{c[0]:.3f}")
+                q.addQueryItem("cy", f"{c[1]:.3f}")
+                q.addQueryItem("cz", f"{c[2]:.3f}")
+                q.addQueryItem("r", f"{r:.3f}")
                 cam = camera_hint.get("camera_pos")
                 if cam:
-                    query += f"&px={cam[0]:.3f}&py={cam[1]:.3f}&pz={cam[2]:.3f}"
-            url.setQuery(query)
-            self._viewer_url = url.toString()
+                    q.addQueryItem("px", f"{cam[0]:.3f}")
+                    q.addQueryItem("py", f"{cam[1]:.3f}")
+                    q.addQueryItem("pz", f"{cam[2]:.3f}")
+            url.setQuery(q)
+            self._viewer_url = url.toString(QUrl.ComponentFormattingOption.FullyEncoded)
             self._camera_hint = camera_hint
             self.viewerUrlChanged.emit()
             self._log(f"Loaded PLY in viewer: {ply.name}")

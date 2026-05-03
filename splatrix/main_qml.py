@@ -14,6 +14,16 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
+# On macOS the GPU process is often blocklisted or sandboxed, causing WebGL
+# to fall back to software rendering or fail entirely.  Force-enable WebGL
+# via Chromium command-line flags before QtWebEngineQuick.initialize().
+if sys.platform == "darwin":
+    _existing = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    _gpu_flags = "--ignore-gpu-blocklist --enable-gpu-rasterization"
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        f"{_existing} {_gpu_flags}".strip()
+    )
+
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFontDatabase, QFont, QIcon
