@@ -169,11 +169,13 @@ Item {
         }
 
         onMediaStatusChanged: {
+            console.log("SPLAT-1 mediaStatus:", mediaStatus, "pending:", _pendingFirstFrame)
             if (_pendingFirstFrame && mediaStatus === MediaPlayer.LoadedMedia)
                 player.play()
         }
 
         onPlaybackStateChanged: {
+            console.log("SPLAT-1 playbackState:", playbackState, "pending:", _pendingFirstFrame)
             if (_pendingFirstFrame && playbackState === MediaPlayer.PlayingState) {
                 _pendingFirstFrame = false
                 player.pause()
