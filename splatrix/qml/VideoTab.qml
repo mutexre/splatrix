@@ -160,6 +160,21 @@ Item {
         videoOutput: videoOutput
         audioOutput: AudioOutput {}
         source: backend ? backend.videoUrl : ""
+
+        property bool _pendingFirstFrame: false
+
+        onSourceChanged: {
+            if (source.toString() !== "")
+                _pendingFirstFrame = true
+        }
+
+        onMediaStatusChanged: {
+            if (_pendingFirstFrame && mediaStatus === MediaPlayer.LoadedMedia) {
+                _pendingFirstFrame = false
+                player.play()
+                player.pause()
+            }
+        }
     }
 
     function _fmtMs(ms) {
