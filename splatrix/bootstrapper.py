@@ -52,19 +52,40 @@ def _detect_platform() -> tuple[str, str, str]:
     return os_name, arch, mamba_platform
 
 
+def _is_frozen() -> bool:
+    """True when running inside a PyInstaller .app bundle."""
+    return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+
+
+def _env_python() -> str:
+    """Path to the Python interpreter inside the ~/.splatrix conda env.
+    Falls back to sys.executable when running from source."""
+    if _is_frozen():
+        env_bin = SPLATRIX_HOME / "envs" / "splatrix" / "bin" / "python"
+        if env_bin.exists():
+            return str(env_bin)
+    return sys.executable
+
+
 def _in_conda_env() -> bool:
-    """True if we're running inside an activated conda/mamba environment."""
+    """True if we're running inside an activated conda/mamba environment.
+    Always False in frozen mode (the .app has no env of its own)."""
+    if _is_frozen():
+        return False
     return bool(os.environ.get("CONDA_PREFIX"))
 
 
 def _conda_prefix() -> Optional[Path]:
+    if _is_frozen():
+        env_prefix = SPLATRIX_HOME / "envs" / "splatrix"
+        return env_prefix if env_prefix.is_dir() else None
     cp = os.environ.get("CONDA_PREFIX")
     return Path(cp) if cp else None
 
 
 def _pip_cmd() -> list[str]:
-    """pip command that installs into the current environment."""
-    return [sys.executable, "-m", "pip"]
+    """pip command that installs into the correct environment."""
+    return [_env_python(), "-m", "pip"]
 
 
 def _conda_cmd() -> Optional[list[str]]:
@@ -99,6 +120,9 @@ def _build_steps() -> list[dict]:
     if os_name == "Darwin" and arch == "arm64":
         steps.append({"id": "msplat", "label": "Metal training engine", "weight": 1})
 
+    if _is_frozen():
+        steps.append({"id": "webengine", "label": "3D Viewer engine", "weight": 2})
+
     steps.append({"id": "finalize", "label": "Finalize setup", "weight": 1})
     return steps
 
@@ -107,6 +131,13 @@ def _build_steps() -> list[dict]:
 
 def is_bootstrap_needed() -> bool:
     """Fast check: are ML pipeline dependencies available?"""
+    if _is_frozen():
+        env_bin = SPLATRIX_HOME / "envs" / "splatrix" / "bin" / "python"
+        if not env_bin.exists():
+            if BOOTSTRAP_FILE.exists():
+                BOOTSTRAP_FILE.unlink()
+            return True
+
     steps = _build_steps()
 
     if BOOTSTRAP_FILE.exists():
@@ -128,8 +159,20 @@ def is_bootstrap_needed() -> bool:
 def _deps_available() -> bool:
     """Check if critical ML deps are importable/callable."""
     try:
-        import torch  # noqa: F401
-        import nerfstudio  # noqa: F401
+        if _is_frozen():
+            env_bin = SPLATRIX_HOME / "envs" / "splatrix" / "bin" / "python"
+            if not env_bin.exists():
+                return False
+            python = str(env_bin)
+        else:
+            python = sys.executable
+
+        r = subprocess.run(
+            [python, "-c", "import torch; import nerfstudio"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            return False
         subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5, check=True)
         _mark_all_completed()
         return True
@@ -179,7 +222,10 @@ def _mark_all_completed():
 
 
 def _load_bootstrap_config() -> dict:
-    config_path = Path(__file__).parent / "bootstrap_config.json"
+    if _is_frozen():
+        config_path = Path(sys._MEIPASS) / "splatrix" / "bootstrap_config.json"
+    else:
+        config_path = Path(__file__).parent / "bootstrap_config.json"
     try:
         with open(config_path) as f:
             return json.load(f)
@@ -206,6 +252,7 @@ class BootstrapWorker(QThread):
     step_failed = pyqtSignal(str, str)         # step_id, error
     progress_changed = pyqtSignal(float)       # 0.0 – 1.0
     status_message = pyqtSignal(str)           # human-readable status
+    log_line = pyqtSignal(str)                 # raw subprocess output line
     all_completed = pyqtSignal()
     install_failed = pyqtSignal(str)           # overall error message
 
@@ -272,6 +319,8 @@ class BootstrapWorker(QThread):
         if desc:
             self.status_message.emit(desc)
 
+        self.log_line.emit(f"$ {' '.join(cmd)}")
+
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -282,7 +331,9 @@ class BootstrapWorker(QThread):
 
         lines = []
         for line in proc.stdout:
-            lines.append(line.rstrip())
+            stripped = line.rstrip()
+            lines.append(stripped)
+            self.log_line.emit(stripped)
 
         proc.wait()
 
@@ -296,6 +347,7 @@ class BootstrapWorker(QThread):
 
     def _download(self, url: str, dest: Path, desc: str = "Downloading"):
         self.status_message.emit(f"{desc}...")
+        self.log_line.emit(f"GET {url}")
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         req = urllib.request.Request(url)
@@ -368,8 +420,8 @@ class BootstrapWorker(QThread):
         mamba = str(SPLATRIX_HOME / "bin" / "micromamba")
         self._run(
             [mamba, "create", "-p", str(prefix),
-             "python=3.10", "-y", "-c", "conda-forge"],
-            desc="Creating Python 3.10 environment...",
+             "python=3.12", "-y", "-c", "conda-forge"],
+            desc="Creating Python 3.12 environment...",
             env_extra={"MAMBA_ROOT_PREFIX": str(SPLATRIX_HOME)},
         )
 
@@ -377,7 +429,7 @@ class BootstrapWorker(QThread):
 
     def _step_pytorch(self):
         r = subprocess.run(
-            [sys.executable, "-c", "import torch; print(torch.__version__)"],
+            [_env_python(), "-c", "import torch; print(torch.__version__)"],
             capture_output=True, text=True,
         )
         if r.returncode == 0:
@@ -472,7 +524,7 @@ class BootstrapWorker(QThread):
 
         # OpenCV
         r = subprocess.run(
-            [sys.executable, "-c", "import cv2"],
+            [_env_python(), "-c", "import cv2"],
             capture_output=True, text=True,
         )
         if r.returncode != 0:
@@ -487,7 +539,7 @@ class BootstrapWorker(QThread):
 
     def _step_nerfstudio(self):
         r = subprocess.run(
-            [sys.executable, "-c", "import nerfstudio"],
+            [_env_python(), "-c", "import nerfstudio"],
             capture_output=True, text=True,
         )
         if r.returncode == 0:
@@ -503,7 +555,7 @@ class BootstrapWorker(QThread):
 
     def _step_msplat(self):
         r = subprocess.run(
-            [sys.executable, "-c", "import msplat"],
+            [_env_python(), "-c", "import msplat"],
             capture_output=True, text=True,
         )
         if r.returncode == 0:
@@ -515,13 +567,31 @@ class BootstrapWorker(QThread):
             desc="Installing Metal training engine...",
         )
 
+    # ── Step: WebEngine (frozen .app only) ──────────────────────────────────
+
+    def _step_webengine(self):
+        python = _env_python()
+        r = subprocess.run(
+            [python, "-c", "from PyQt6 import QtWebEngineQuick"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            self.status_message.emit("WebEngine already installed")
+            return
+
+        self._run(
+            [*_pip_cmd(), "install", "PyQt6-WebEngine>=6.6.0"],
+            desc="Installing 3D viewer engine...",
+        )
+
     # ── Step: Finalize ─────────────────────────────────────────────────────
 
     def _step_finalize(self):
         self.status_message.emit("Applying compatibility patches...")
 
+        python = _env_python()
         r = subprocess.run(
-            [sys.executable, "-c",
+            [python, "-c",
              "import nerfstudio.process_data.colmap_utils as m; print(m.__file__)"],
             capture_output=True, text=True,
         )
@@ -532,7 +602,7 @@ class BootstrapWorker(QThread):
         utils_path = r.stdout.strip()
 
         r = subprocess.run(
-            [sys.executable, "-c",
+            [python, "-c",
              f"print('yes' if '_extract_gpu_flag' in open({utils_path!r}).read() else 'no')"],
             capture_output=True, text=True,
         )
@@ -550,7 +620,7 @@ class BootstrapWorker(QThread):
 
         try:
             subprocess.run(
-                [sys.executable, patch_file],
+                [python, patch_file],
                 check=True, capture_output=True,
             )
         finally:
@@ -619,6 +689,7 @@ class BootstrapController(QObject):
     isRunningChanged = pyqtSignal()
     isCompleteChanged = pyqtSignal()
     errorMessageChanged = pyqtSignal()
+    logTextChanged = pyqtSignal()
 
     finished = pyqtSignal()
 
@@ -630,6 +701,7 @@ class BootstrapController(QObject):
         self._is_running = False
         self._is_complete = False
         self._error_message = ""
+        self._log_text = ""
         self._worker: Optional[BootstrapWorker] = None
         self._shutting_down = False
 
@@ -680,6 +752,10 @@ class BootstrapController(QObject):
     @pyqtProperty(str, notify=errorMessageChanged)
     def errorMessage(self):
         return self._error_message
+
+    @pyqtProperty(str, notify=logTextChanged)
+    def logText(self):
+        return self._log_text
 
     @pyqtProperty("QVariantList", notify=stepsModelChanged)
     def stepsModel(self):
@@ -735,6 +811,7 @@ class BootstrapController(QObject):
         self._worker.step_failed.connect(self._on_step_failed)
         self._worker.progress_changed.connect(self._on_progress)
         self._worker.status_message.connect(self._on_status)
+        self._worker.log_line.connect(self._on_log_line)
         self._worker.all_completed.connect(self._on_all_completed)
         self._worker.install_failed.connect(self._on_failed)
         self._worker.finished.connect(self._on_thread_finished)
@@ -784,6 +861,13 @@ class BootstrapController(QObject):
     def _on_status(self, message: str):
         self._status_message = message
         self.statusMessageChanged.emit()
+
+    def _on_log_line(self, line: str):
+        if self._log_text:
+            self._log_text += "\n" + line
+        else:
+            self._log_text = line
+        self.logTextChanged.emit()
 
     def _on_all_completed(self):
         self._is_complete = True

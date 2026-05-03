@@ -69,16 +69,19 @@ Item {
                     }
                 }
 
-                Text {
+                TextEdit {
                     id: logText
                     width: logFlick.width
                     text: backend ? backend.logContent : ""
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSizeSm
-                    font.family: "monospace"
+                    font.family: "Menlo"
                     wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
-                    lineHeight: 1.4
+                    textFormat: TextEdit.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    selectionColor: Theme.accent
+                    selectedTextColor: Theme.bg
                 }
 
                 // Auto-scroll to bottom

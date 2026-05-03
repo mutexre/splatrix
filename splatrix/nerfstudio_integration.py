@@ -34,7 +34,7 @@ class NerfstudioPipeline:
     
     def __init__(
         self, 
-        video_processor: Literal["nerfstudio", "pyav"] = "nerfstudio",
+        video_processor: Literal["nerfstudio", "pyav", "auto"] = "auto",
         processing_config: Optional[ProcessingConfig] = None
     ):
         self.workspace_dir: Optional[Path] = None
@@ -42,12 +42,11 @@ class NerfstudioPipeline:
         self.output_dir: Optional[Path] = None
         self._training_backend: Optional[TrainingBackend] = None
         
-        if not _nerfstudio_available():
-            raise ImportError("nerfstudio not installed. Install with: pip install nerfstudio")
-        
-        # Initialize video processor
         self.processing_config = processing_config or ProcessingConfig()
         
+        if video_processor == "auto":
+            video_processor = "nerfstudio" if _nerfstudio_available() else "pyav"
+
         if video_processor == "pyav":
             if not PYAV_AVAILABLE:
                 raise ImportError("PyAV processor requested but not available. Install with: pip install av")
