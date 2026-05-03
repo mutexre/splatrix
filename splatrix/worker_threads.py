@@ -311,7 +311,7 @@ class NerfstudioWorker(QThread):
         output_ply_path: str,
         max_iterations: int = 30000,
         use_video_directly: bool = True,
-        video_processor: str = "nerfstudio",  # "nerfstudio" or "pyav"
+        video_processor: str = "auto",  # "nerfstudio", "pyav", or "auto"
         num_frames_target: int = 300,  # Max frames to extract from video
         # Resume support
         skip_data_processing: bool = False,  # Skip frames/COLMAP stages
@@ -373,13 +373,7 @@ class NerfstudioWorker(QThread):
             self._emit_stage(init_stage, 'running', 0.01)
 
             pipeline = NerfstudioPipeline(video_processor=self.video_processor)
-
-            if not pipeline.check_nerfstudio_installed():
-                raise RuntimeError(
-                    "nerfstudio not found. Install with: pip install nerfstudio"
-                )
-
-            self.log.emit("Nerfstudio pipeline starting...")
+            self.log.emit(f"Pipeline starting (video processor: {type(pipeline.video_processor).__name__})...")
 
             workspace_info = pipeline.setup_workspace(self.workspace_dir)
             self.log.emit(f"Workspace: {workspace_info['workspace']}")

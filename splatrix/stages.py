@@ -1,13 +1,12 @@
+"""Pipeline stage and state enums.
+
+Stage and StageState are canonical in protocol.py; re-exported here for
+backward compatibility with existing imports.
+"""
+
+from .protocol import Stage, StageState  # noqa: F401
+
 from enum import Enum
-
-
-class Stage(Enum):
-    FRAMES = "frames"
-    FEATURE_EXTRACT = "feature_extract"
-    FEATURE_MATCH = "feature_match"
-    RECONSTRUCTION = "reconstruction"
-    TRAINING = "training"
-    EXPORT = "export"
 
 
 class PipelineState(Enum):

@@ -140,167 +140,54 @@ class NerfstudioVideoProcessor(BaseVideoProcessor):
             gpu=self.config.gpu,
             verbose=True
         )
-        
-        # Hook print and stderr for progress tracking
-        # COLMAP C++ extension writes to stderr FD directly, need to capture at OS level
-        import os
-        import select
-        
+
         original_print = print
-        original_stderr_fd = os.dup(2)  # Duplicate stderr FD
-        
-        # Create pipe for stderr capture
-        stderr_pipe_read, stderr_pipe_write = os.pipe()
-        os.dup2(stderr_pipe_write, 2)  # Redirect stderr FD to pipe
-        
-        # Make read end non-blocking
-        import fcntl
-        flags = fcntl.fcntl(stderr_pipe_read, fcntl.F_GETFL)
-        fcntl.fcntl(stderr_pipe_read, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-        
-        stderr_buffer = []
-        
-        def process_stderr_line(line: str):
-            """Process captured stderr line for progress"""
-            if self._is_cancelled:
-                raise InterruptedError("Processing cancelled")
-            
-            # Write to original stderr
-            os.write(original_stderr_fd, (line + '\n').encode())
-            
+
+        def _parse_progress(msg: str):
+            """Extract progress from nerfstudio print output."""
             if not progress_callback:
                 return
-            
-            # Parse for progress
-            # Feature extraction: "Processed file [N/M]"
-            if "Processed file" in line:
-                # Debug: log that we caught this message
-                try:
-                    os.write(original_stderr_fd, f"[DEBUG] Caught feature extraction: {line}\n".encode())
-                except:
-                    pass
-                
-                match = re.search(r'\[(\d+)/(\d+)\]', line)
-                if match:
-                    current = int(match.group(1))
-                    total = int(match.group(2))
-                    if last_reported['feature_extract'] != current:
-                        progress = 0.15 + (current / total) * 0.15
-                        progress_callback(f"COLMAP: Extracting features [{current}/{total}]", progress)
-                        last_reported['feature_extract'] = current
-            
-            # Feature matching: "Processing image [N/M]"
-            elif "Processing image" in line and "[" in line:
-                match = re.search(r'\[(\d+)/(\d+)\]', line)
-                if match:
-                    current = int(match.group(1))
-                    total = int(match.group(2))
-                    if last_reported['matching'] != current:
-                        progress = 0.30 + (current / total) * 0.20
-                        progress_callback(f"COLMAP: Matching features [{current}/{total}]", progress)
-                        last_reported['matching'] = current
-            
-            # Reconstruction phases
-            elif "Registering image" in line:
-                match = re.search(r'num_reg_frames=(\d+)', line)
-                if match:
-                    num_reg = int(match.group(1))
-                    progress = 0.50 + (num_reg / 350) * 0.30
-                    progress_callback(f"COLMAP: Reconstruction [{num_reg} images]", progress)
-            
-            # Completion stages
-            elif "Done extracting" in line and "features" not in line.lower():
-                progress_callback("Frame extraction complete", 0.15)
-            elif "Done extracting" in line and "features" in line.lower():
-                progress_callback("Feature extraction complete", 0.30)
-            elif "Done matching" in line and "feature" in line.lower():
-                progress_callback("Feature matching complete", 0.50)
-            elif "Done" in line and "bundle adjustment" in line:
-                progress_callback("Bundle adjustment complete", 0.80)
-            elif "Done refining" in line:
-                progress_callback("Refining intrinsics complete", 0.90)
-            elif "All DONE" in line or "CONGRATS" in line:
+            if "Processed file" in msg:
+                m = re.search(r'\[(\d+)/(\d+)\]', msg)
+                if m:
+                    cur, tot = int(m.group(1)), int(m.group(2))
+                    if last_reported['feature_extract'] != cur:
+                        progress_callback(f"COLMAP: Extracting features [{cur}/{tot}]",
+                                          0.15 + (cur / tot) * 0.15)
+                        last_reported['feature_extract'] = cur
+            elif "Processing image" in msg and "[" in msg:
+                m = re.search(r'\[(\d+)/(\d+)\]', msg)
+                if m:
+                    cur, tot = int(m.group(1)), int(m.group(2))
+                    if last_reported['matching'] != cur:
+                        progress_callback(f"COLMAP: Matching features [{cur}/{tot}]",
+                                          0.30 + (cur / tot) * 0.20)
+                        last_reported['matching'] = cur
+            elif "Registering image" in msg:
+                m = re.search(r'num_reg_frames=(\d+)', msg)
+                if m:
+                    progress_callback(f"COLMAP: Reconstruction [{m.group(1)} images]",
+                                      0.50 + (int(m.group(1)) / 350) * 0.30)
+            elif "All DONE" in msg or "CONGRATS" in msg:
                 progress_callback("COLMAP processing complete", 0.95)
-        
+
         def progress_print(*args, **kwargs):
-            """Capture print statements for progress"""
             if self._is_cancelled:
                 raise InterruptedError("Processing cancelled")
-            
-            msg = ' '.join(str(arg) for arg in args)
-            process_stderr_line(msg)
+            msg = ' '.join(str(a) for a in args)
+            _parse_progress(msg)
             original_print(*args, **kwargs)
-        
+
         builtins.print = progress_print
-        
-        # Start stderr reader thread
-        def read_stderr():
-            """Read from stderr pipe and process lines"""
-            # Debug: Signal that stderr reader is active
-            try:
-                os.write(original_stderr_fd, b"[DEBUG] stderr reader thread started\n")
-            except:
-                pass
-            
-            while self._monitor_active[0]:
-                try:
-                    # Check if data available (with timeout)
-                    ready, _, _ = select.select([stderr_pipe_read], [], [], 0.1)
-                    if ready:
-                        data = os.read(stderr_pipe_read, 4096)
-                        if data:
-                            text = data.decode('utf-8', errors='replace')
-                            # Accumulate in buffer and process complete lines
-                            stderr_buffer.append(text)
-                            full_text = ''.join(stderr_buffer)
-                            
-                            # Split by newlines
-                            lines = full_text.split('\n')
-                            # Keep last incomplete line in buffer
-                            stderr_buffer.clear()
-                            if not full_text.endswith('\n'):
-                                stderr_buffer.append(lines[-1])
-                                lines = lines[:-1]
-                            
-                            # Process complete lines
-                            for line in lines:
-                                line = line.strip()
-                                if line:
-                                    process_stderr_line(line)
-                except Exception as e:
-                    # Log errors but don't crash - stderr capture is non-critical
-                    import traceback
-                    error_msg = f"stderr reader error: {e}\n{traceback.format_exc()}"
-                    # Write to original stderr FD to avoid recursion
-                    try:
-                        os.write(original_stderr_fd, error_msg.encode())
-                    except:
-                        pass
-        
-        stderr_reader = threading.Thread(target=read_stderr, daemon=True)
-        stderr_reader.start()
-        
+
         try:
-            # Run nerfstudio processing
             processor.main()
-            
             if progress_callback:
                 progress_callback("Video processing complete", 1.0)
-        
         finally:
-            # Stop monitoring threads
             self._monitor_active[0] = False
             if self._monitor_thread:
                 self._monitor_thread.join(timeout=2)
-            stderr_reader.join(timeout=2)
-            
-            # Restore stderr file descriptor
-            os.dup2(original_stderr_fd, 2)
-            os.close(original_stderr_fd)
-            os.close(stderr_pipe_read)
-            os.close(stderr_pipe_write)
-            
-            # Restore original functions
             builtins.print = original_print
         
         # Find transforms.json

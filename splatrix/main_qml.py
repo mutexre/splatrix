@@ -1,11 +1,12 @@
 """QML-based application entry point for Splatrix.
 
 Startup sequence:
-1. Check if ML pipeline dependencies are installed
-2. If not, show bootstrap dialog to download and install them
-3. Ensure "SplatrixProjects" folder exists in ~/Documents
-4. Restore last session (reopen previously open projects)
-5. If no session to restore, open one empty window
+1. If frozen (.app), prepend ~/.splatrix env site-packages to sys.path
+2. Check if ML pipeline dependencies are installed
+3. If not, show bootstrap dialog to download and install them
+4. Ensure "SplatrixProjects" folder exists in ~/Documents
+5. Restore last session (reopen previously open projects)
+6. If no session to restore, open one empty window
 """
 
 import os
@@ -18,7 +19,12 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFontDatabase, QFont, QIcon
 from PyQt6.QtQml import QQmlApplicationEngine
-from PyQt6.QtWebEngineQuick import QtWebEngineQuick
+
+try:
+    from PyQt6.QtWebEngineQuick import QtWebEngineQuick
+    _HAS_WEBENGINE = True
+except ImportError:
+    _HAS_WEBENGINE = False
 
 from .bootstrapper import is_bootstrap_needed, reset_bootstrap, BootstrapController
 
@@ -38,7 +44,10 @@ def main():
     except ImportError:
         pass
 
-    QtWebEngineQuick.initialize()
+    if _HAS_WEBENGINE:
+        QtWebEngineQuick.initialize()
+
+    _prepend_env_site_packages()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Splatrix")
@@ -70,8 +79,6 @@ def _run_bootstrap(app: QApplication, qml_dir: Path):
         print("ERROR: Failed to load bootstrap dialog", file=sys.stderr)
         sys.exit(1)
 
-    # prevent GC — Python would otherwise destroy these locals when this
-    # function returns, even though Qt still references them via the context
     app._bootstrap_engine = engine
     app._bootstrap_controller = controller
 
@@ -90,12 +97,96 @@ def _run_bootstrap(app: QApplication, qml_dir: Path):
     controller.finished.connect(on_proceed)
 
 
+def _resource_dir() -> Path:
+    """Root of the splatrix package resources.
+    In frozen mode, PyInstaller extracts data into sys._MEIPASS."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "splatrix"
+    return Path(__file__).parent
+
+
+class _EnvFallbackFinder:
+    """Meta-path finder that resolves submodule imports from the bootstrapped
+    env's stdlib/site-packages when PyInstaller's FrozenImporter owns the
+    parent package but doesn't bundle the submodule.
+
+    Appended to the END of sys.meta_path so it only activates after all
+    default finders have given up."""
+
+    def __init__(self, env_lib: Path):
+        self._roots = []
+        if env_lib.is_dir():
+            for pydir in sorted(env_lib.glob("python3.*")):
+                self._roots.append(pydir)
+                sp = pydir / "site-packages"
+                if sp.is_dir():
+                    self._roots.append(sp)
+
+    def find_spec(self, fullname, path, target=None):
+        import importlib.util
+        import importlib.machinery
+        parts = fullname.replace(".", "/")
+        for root in self._roots:
+            pkg_init = root / parts / "__init__.py"
+            if pkg_init.is_file():
+                return importlib.util.spec_from_file_location(
+                    fullname, str(pkg_init),
+                    submodule_search_locations=[str(root / parts)],
+                )
+            for suffix in importlib.machinery.SOURCE_SUFFIXES:
+                candidate = root / (parts + suffix)
+                if candidate.is_file():
+                    return importlib.util.spec_from_file_location(
+                        fullname, str(candidate))
+            for suffix in importlib.machinery.EXTENSION_SUFFIXES:
+                candidate = root / (parts + suffix)
+                if candidate.is_file():
+                    return importlib.util.spec_from_file_location(
+                        fullname, str(candidate))
+        return None
+
+
+def _prepend_env_site_packages():
+    """When running from a frozen .app, ML deps live in ~/.splatrix/envs.
+    Add that env's site-packages to sys.path so they become importable.
+
+    Also installs a fallback meta-path finder so that submodules of
+    packages already loaded by PyInstaller's FrozenImporter (e.g.
+    ctypes.util, xml.etree) can be resolved from the env's complete
+    stdlib."""
+    splatrix_env = Path.home() / ".splatrix" / "envs" / "splatrix"
+    if not splatrix_env.is_dir():
+        return
+
+    lib_dir = splatrix_env / "lib"
+    if lib_dir.is_dir():
+        for pydir in sorted(lib_dir.glob("python3.*")):
+            sp = pydir / "site-packages"
+            if sp.is_dir():
+                sp_str = str(sp)
+                if sp_str not in sys.path:
+                    sys.path.insert(0, sp_str)
+
+    # Install fallback finder for frozen-bundle submodule gaps
+    if getattr(sys, "frozen", False) and lib_dir.is_dir():
+        finder = _EnvFallbackFinder(lib_dir)
+        if finder._roots:
+            sys.meta_path.append(finder)
+
+    bin_dir = splatrix_env / "bin"
+    if bin_dir.is_dir():
+        path = os.environ.get("PATH", "")
+        if str(bin_dir) not in path:
+            os.environ["PATH"] = f"{bin_dir}:{path}"
+
+
 def _reload_modules():
     """After bootstrap installs new packages, ensure Python's import
     machinery can find them.  The nerfstudio/torch checks are now lazy
     (done at use-time in each class), so we only need to clear the
     finder caches so newly-installed packages are discoverable."""
     import importlib
+    _prepend_env_site_packages()
     importlib.invalidate_caches()
     sys.path_importer_cache.clear()
 
@@ -120,14 +211,15 @@ def _start_app(app: QApplication):
 
 
 def _setup_icon(app: QApplication):
-    icon_dir = Path(__file__).parent / "qml" / "icons"
+    pkg = _resource_dir()
+    icon_dir = pkg / "qml" / "icons"
     for icon_file in ["app-icon.png", "app-icon.svg"]:
         icon_path = icon_dir / icon_file
         if icon_path.exists():
             app.setWindowIcon(QIcon(str(icon_path)))
             break
 
-    res_dir = Path(__file__).parent.parent / "resources"
+    res_dir = pkg.parent / "resources"
     if (res_dir / "icon-256.png").exists():
         icon = QIcon()
         for sz in [16, 32, 48, 64, 128, 256, 512, 1024]:
@@ -140,7 +232,7 @@ def _setup_icon(app: QApplication):
 
 def _setup_fonts(app: QApplication) -> Path:
     """Load Inter font family.  Returns the qml directory path."""
-    qml_dir = Path(__file__).parent / "qml"
+    qml_dir = _resource_dir() / "qml"
     font_dir = qml_dir / "fonts"
 
     for ttf in font_dir.glob("Inter*.ttf"):

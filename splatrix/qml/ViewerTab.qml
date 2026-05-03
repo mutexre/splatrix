@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import QtWebEngine
 
-// 3D Viewer tab — embeds viewer.html via WebEngineView
+// 3D Viewer tab — loads WebEngine dynamically (only available after bootstrap)
 Item {
     id: root
 
@@ -11,26 +10,39 @@ Item {
         color: Theme.bg
     }
 
-    WebEngineView {
-        id: webView
+    Loader {
+        id: viewerLoader
         anchors.fill: parent
-        url: backend ? backend.viewerUrl : "about:blank"
-        backgroundColor: Theme.bg
-
-        settings.localContentCanAccessFileUrls: true
-        settings.localContentCanAccessRemoteUrls: true
-
-        onLoadingChanged: function(loadRequest) {
-            if (loadRequest.status === WebEngineView.LoadFailedStatus)
-                console.warn("Viewer load failed:", loadRequest.errorString)
-        }
+        active: backend ? backend.webEngineAvailable : false
+        source: "ViewerWebEngine.qml"
     }
 
-    // Reload viewer when URL changes
-    Connections {
-        target: backend
-        function onViewerUrlChanged() {
-            webView.url = backend.viewerUrl
+    // Placeholder when WebEngine is not yet installed
+    Column {
+        anchors.centerIn: parent
+        spacing: 12
+        visible: !viewerLoader.active
+
+        Icon {
+            name: "box"
+            size: 48
+            color: Theme.textMuted
+            anchors.horizontalCenter: parent.horizontalCenter
+        }
+
+        Text {
+            text: "3D Viewer"
+            color: Theme.text
+            font.pixelSize: 18
+            font.weight: Font.DemiBold
+            anchors.horizontalCenter: parent.horizontalCenter
+        }
+
+        Text {
+            text: "Complete the initial setup to enable the 3D viewer."
+            color: Theme.textMuted
+            font.pixelSize: 13
+            anchors.horizontalCenter: parent.horizontalCenter
         }
     }
 }

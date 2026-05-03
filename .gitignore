@@ -25,6 +25,7 @@ venv/
 ENV/
 env/
 .venv
+.build-venv/
 
 # IDE
 .vscode/
@@ -41,6 +42,9 @@ outputs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project locks
+.lock
 
 # Website build
 website/node_modules/

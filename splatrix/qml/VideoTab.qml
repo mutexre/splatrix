@@ -125,7 +125,7 @@ Item {
                     text: _fmtMs(player.position) + " / " + _fmtMs(player.duration)
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSizeXs
-                    font.family: "monospace"
+                    font.family: "Menlo"
                     Layout.preferredWidth: 100
                     horizontalAlignment: Text.AlignRight
                 }

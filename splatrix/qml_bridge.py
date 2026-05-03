@@ -14,11 +14,9 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QFileDialog, QApplication
 from transitions import Machine, MachineError
 
-from .worker_threads import (
-    VideoProcessingWorker, ReconstructionWorker, PLYExportWorker, NerfstudioWorker
-)
 from .video_processor import VideoProcessor
-from .project_manager import ProjectManager
+from .project_manager import ProjectManager, ProjectLockedError
+from .protocol import Operation, StageState
 from .stages import Stage, PipelineState
 
 # ── Stage labels for QML UI ──────────────────────────────────────────────────
@@ -35,6 +33,15 @@ _STAGE_LABELS: dict[Stage, str] = {
 _DATA_STAGES = (Stage.FRAMES, Stage.FEATURE_EXTRACT, Stage.FEATURE_MATCH, Stage.RECONSTRUCTION)
 
 _RESTARTABLE_STAGES = frozenset({Stage.FRAMES, Stage.TRAINING, Stage.EXPORT})
+
+_STAGE_TO_OPERATION: dict[Stage, Operation] = {
+    Stage.FRAMES: Operation.DATA,
+    Stage.FEATURE_EXTRACT: Operation.DATA,
+    Stage.FEATURE_MATCH: Operation.DATA,
+    Stage.RECONSTRUCTION: Operation.DATA,
+    Stage.TRAINING: Operation.TRAINING,
+    Stage.EXPORT: Operation.EXPORT,
+}
 
 
 class Backend(QObject):
@@ -62,6 +69,8 @@ class Backend(QObject):
     projectNameChanged = pyqtSignal()
     viewerUrlChanged = pyqtSignal()
     frameImagesChanged = pyqtSignal()
+    serverConnectedChanged = pyqtSignal()
+    operationStatesChanged = pyqtSignal()
 
     def __init__(self, controller=None, parent=None):
         super().__init__(parent)
@@ -101,6 +110,7 @@ class Backend(QObject):
                 "key": s.value, "label": _STAGE_LABELS[s],
                 "status": "pending", "progress": 0.0, "detail": "",
                 "restartable": s in _RESTARTABLE_STAGES,
+                "validity": StageState.NO_DATA.value,
             }
             for s in Stage
         ]
@@ -114,11 +124,14 @@ class Backend(QObject):
         # Last-used directories for file/folder dialogs (keyed by purpose)
         self._last_dirs: dict[str, str] = {}
 
-        # Workers
-        self._nerfstudio_worker: Optional[NerfstudioWorker] = None
-        self._video_worker: Optional[VideoProcessingWorker] = None
-        self._reconstruction_worker: Optional[ReconstructionWorker] = None
-        self._export_worker: Optional[PLYExportWorker] = None
+        # Server bridge
+        self._server_bridge = None
+        self._server_connected = False
+        self._active_request_id: Optional[str] = None
+        self._active_stage: Optional[Stage] = None
+        self._pending_input_dir: Optional[Path] = None
+        self._pending_output_dir: Optional[Path] = None
+        self._stage_queue: list[Stage] = []
 
         # Project manager
         self._project = ProjectManager()
@@ -217,6 +230,14 @@ class Backend(QObject):
     def projectName(self):
         return self._project.project_name if self._project.is_open else ""
 
+    @pyqtProperty(bool, constant=True)
+    def webEngineAvailable(self):
+        try:
+            from PyQt6 import QtWebEngineQuick  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
     @pyqtProperty(QUrl, notify=viewerUrlChanged)
     def viewerUrl(self):
         if self._viewer_url:
@@ -226,6 +247,20 @@ class Backend(QObject):
     @pyqtProperty("QVariantList", notify=frameImagesChanged)
     def frameImages(self):
         return self._frame_images
+
+    @pyqtProperty(bool, notify=serverConnectedChanged)
+    def serverConnected(self):
+        return self._server_connected
+
+    @pyqtProperty("QVariantList", notify=operationStatesChanged)
+    def operationStates(self):
+        """Per-operation validity states for the QML UI."""
+        if not self._project.is_open:
+            return [{"operation": op.value, "state": StageState.NO_DATA.value} for op in Operation]
+        return [
+            {"operation": op.value, "state": self._project.operation_validity(op).value}
+            for op in Operation
+        ]
 
     # ══════════════════════════════════════════════════════════════════════════
     #  QML Slots (actions)
@@ -315,13 +350,11 @@ class Backend(QObject):
         self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
 
-        resume_point = self._project.get_resume_point()
-        if resume_point and resume_point is not Stage.FRAMES:
-            self._log(f"Resuming pipeline from: {resume_point.value}")
-            self._start_from_stage_impl(resume_point)
-        else:
-            self._log("Starting conversion pipeline...")
-            self._start_nerfstudio_pipeline()
+        for s in Stage:
+            self._set_stage(s, 'pending', 'Waiting...')
+
+        self._stage_queue = list(Stage)
+        self._run_next_stage()
 
     @pyqtSlot(str)
     def startFromStage(self, stage_key: str):
@@ -352,79 +385,16 @@ class Backend(QObject):
         self._log(f"Starting pipeline from stage: {stage_key}")
         self._log(f"Project: {self._project.project_dir}")
         self._set_status("Processing...")
-        self._start_from_stage_impl(stage)
 
-    def _start_from_stage_impl(self, stage: Stage):
-        """Internal: configure and launch the worker for the given start stage.
-
-        Caller must have already transitioned to RUNNING state.
-        """
         all_stages = list(Stage)
-        start_idx = all_stages.index(stage)
-        training_idx = all_stages.index(Stage.TRAINING)
-        export_idx = all_stages.index(Stage.EXPORT)
+        stage_idx = all_stages.index(stage)
+        for s in all_stages[:stage_idx]:
+            self._set_stage(s, 'completed', '')
+        for s in all_stages[stage_idx:]:
+            self._set_stage(s, 'pending', 'Waiting...')
 
-        if start_idx >= export_idx:
-            checkpoint = self._project.get_training_checkpoint()
-            if not checkpoint or not Path(checkpoint).exists():
-                self._log("Error: No training checkpoint found — run training first")
-                self.pipeline_finish()
-                return
-            for s in all_stages[:export_idx]:
-                self._set_stage(s, 'completed', '')
-            self._set_stage(Stage.EXPORT, 'pending', 'Waiting...')
-            workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
-            output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
-            max_frames = self._max_frames if self._max_frames > 0 else 300
-            recon_path = self._project.get_stage(Stage.RECONSTRUCTION).get('path')
-            if recon_path and not (Path(recon_path) / "transforms.json").exists():
-                parent = Path(recon_path).parent
-                if (parent / "transforms.json").exists():
-                    recon_path = str(parent)
-            self._nerfstudio_worker = NerfstudioWorker(
-                video_path=self._video_path,
-                workspace_dir=workspace,
-                output_ply_path=output_ply,
-                max_iterations=self._training_iterations,
-                use_video_directly=True,
-                num_frames_target=max_frames,
-                skip_data_processing=True,
-                skip_training=True,
-                existing_checkpoint=checkpoint,
-                existing_data_dir=recon_path,
-            )
-        elif start_idx >= training_idx:
-            data_dir = self._project.get_stage(Stage.RECONSTRUCTION).get('path')
-            if not data_dir or not Path(data_dir).exists():
-                self._log("Error: No reconstruction data found — run earlier stages first")
-                self.pipeline_finish()
-                return
-            data_path = Path(data_dir)
-            if not (data_path / "transforms.json").exists() and (data_path.parent / "transforms.json").exists():
-                data_dir = str(data_path.parent)
-            for s in all_stages[:training_idx]:
-                self._set_stage(s, 'completed', '')
-            for s in all_stages[training_idx:]:
-                self._set_stage(s, 'pending', 'Waiting...')
-            workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
-            output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
-            max_frames = self._max_frames if self._max_frames > 0 else 300
-            self._nerfstudio_worker = NerfstudioWorker(
-                video_path=self._video_path,
-                workspace_dir=workspace,
-                output_ply_path=output_ply,
-                max_iterations=self._training_iterations,
-                use_video_directly=True,
-                num_frames_target=max_frames,
-                skip_data_processing=True,
-                existing_data_dir=data_dir,
-            )
-        else:
-            self._start_nerfstudio_pipeline()
-            return
-
-        self._connect_nerfstudio_worker()
-        self._nerfstudio_worker.start()
+        self._stage_queue = all_stages[stage_idx:]
+        self._run_next_stage()
 
     @pyqtSlot()
     def exportPly(self):
@@ -456,14 +426,10 @@ class Backend(QObject):
             return
 
         self._log("Cancelling operations...")
+        self._stage_queue.clear()
 
-        for worker in (self._nerfstudio_worker, self._video_worker,
-                       self._reconstruction_worker, self._export_worker):
-            if worker and worker.isRunning():
-                worker.cancel()
-                kill = getattr(worker, '_kill_child_processes', None)
-                if kill:
-                    kill()
+        if self._active_request_id and self._server_bridge:
+            self._server_bridge.request_cancel(self._active_request_id)
 
         self._set_status("Cancelling...")
 
@@ -475,9 +441,11 @@ class Backend(QObject):
 
     @pyqtSlot()
     def windowClosing(self):
-        """Called by QML onClosing — auto-save and tell controller."""
+        """Called by QML onClosing — auto-save, disconnect, and tell controller."""
         self._auto_save_project()
         self._save_settings()
+        self.disconnect_from_server()
+        self._project.close()
         if self._controller:
             self._controller.close_window(self)
 
@@ -585,9 +553,8 @@ class Backend(QObject):
         idx = self._stage_index(stage)
         if idx < 0:
             return
-        entry = self._stages[idx]
+        entry = dict(self._stages[idx])
 
-        # ETA tracking
         if status == "running" and stage not in self._stage_start_times:
             self._stage_start_times[stage] = time.time()
         elif status in ("completed", "failed", "cancelled", "pending"):
@@ -603,7 +570,6 @@ class Backend(QObject):
         elif status == "pending":
             entry["progress"] = 0.0
 
-        # Compute ETA for running stages
         if status == "running" and progress > 0.01:
             started = self._stage_start_times.get(stage)
             if started:
@@ -615,6 +581,7 @@ class Backend(QObject):
         else:
             entry["eta"] = ""
 
+        self._stages[idx] = entry
         self.stagesChanged.emit()
 
     @staticmethod
@@ -651,32 +618,15 @@ class Backend(QObject):
             if self._cancel_timer:
                 self._cancel_timer.stop()
                 self._cancel_timer = None
-            self._disconnect_and_clear_worker()
 
     def _on_cancel_timeout(self):
-        """Safety net: force back to IDLE if worker never emits finished."""
+        """Safety net: force back to IDLE if server never responds."""
         self._log("Cancel timeout — forcing idle state")
+        self._cleanup_pending_workspace()
         try:
             self.pipeline_timeout()
         except MachineError:
             pass
-
-    def _disconnect_and_clear_worker(self):
-        """Disconnect signals from current worker and release reference."""
-        w = self._nerfstudio_worker
-        if w:
-            try:
-                w.progress.disconnect(self._on_nerfstudio_progress)
-                w.finished.disconnect(self._on_nerfstudio_finished)
-                w.log.disconnect(self._log)
-                w.stage_data_completed.disconnect(self._on_stage_data_completed)
-                w.stage_training_completed.disconnect(self._on_stage_training_completed)
-            except (TypeError, RuntimeError):
-                pass
-        self._nerfstudio_worker = None
-        self._video_worker = None
-        self._reconstruction_worker = None
-        self._export_worker = None
 
     def _scan_frame_images(self, frames_dir: str = None):
         """Scan extracted frames directory and populate frameImages list."""
@@ -803,6 +753,7 @@ class Backend(QObject):
         try:
             self._project.load_project(path)
             self._log(f"Project loaded: {self._project.project_name}")
+            self._update_validity_ui()
             self.windowTitleChanged.emit()
             self.projectNameChanged.emit()
             self.projectDirChanged.emit()
@@ -863,6 +814,9 @@ class Backend(QObject):
 
             self._update_button_states()
 
+        except ProjectLockedError:
+            self._log(f"Project is open in another instance: {path}")
+            self._set_status("Project locked")
         except Exception as e:
             self._log(f"Failed to load project: {e}")
 
@@ -955,12 +909,296 @@ class Backend(QObject):
             self._log(f"Error loading PLY in viewer: {e}")
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Pipeline execution (Nerfstudio)
+    #  Server bridge (client-server mode)
     # ══════════════════════════════════════════════════════════════════════════
 
-    def _start_nerfstudio_pipeline(self):
-        self._log("Starting Nerfstudio pipeline...")
-        self._log("This will take 10-30 minutes depending on GPU and settings")
+    def connect_to_server(self):
+        """Start the server bridge thread and connect to the processing server."""
+        if self._server_bridge is not None:
+            return
+
+        from .server_bridge import ServerBridge
+        self._server_bridge = ServerBridge(parent=self)
+        self._server_bridge.connected.connect(self._on_server_connected)
+        self._server_bridge.disconnected.connect(self._on_server_disconnected)
+        self._server_bridge.connection_error.connect(self._on_server_error)
+        self._server_bridge.accepted.connect(self._on_server_accepted)
+        self._server_bridge.progress.connect(self._on_server_progress)
+        self._server_bridge.completed.connect(self._on_server_completed)
+        self._server_bridge.failed.connect(self._on_server_failed)
+        self._server_bridge.cancelled.connect(self._on_server_cancelled)
+        self._server_bridge.acknowledged.connect(self._on_server_acknowledged)
+        self._server_bridge.status_received.connect(self._on_server_status)
+        self._server_bridge.start()
+
+    def disconnect_from_server(self):
+        if self._server_bridge:
+            self._server_bridge.stop()
+            self._server_bridge = None
+            self._server_connected = False
+            self.serverConnectedChanged.emit()
+
+    def _on_server_connected(self):
+        self._server_connected = True
+        self.serverConnectedChanged.emit()
+        self._log("Connected to processing server")
+        if self._project.is_open and self._project.project_uuid:
+            self._server_bridge.request_status(self._project.project_uuid)
+        if self._stage_queue and self.state is PipelineState.RUNNING:
+            self._run_next_stage()
+
+    def _on_server_disconnected(self):
+        self._server_connected = False
+        self.serverConnectedChanged.emit()
+        self._log("Disconnected from processing server")
+
+    def _on_server_error(self, error: str):
+        self._log(f"Server connection error: {error}")
+        self._server_connected = False
+        self.serverConnectedChanged.emit()
+        if self._stage_queue:
+            self._stage_queue.clear()
+            self._set_status("Server unavailable")
+            try:
+                self.pipeline_finish()
+            except MachineError:
+                pass
+
+    def _on_server_accepted(self, request_id: str):
+        self._active_request_id = request_id
+        self._log(f"Server accepted request: {request_id[:12]}...")
+
+    def _on_server_progress(self, request_id: str, stage_key: str, progress_val: float):
+        if request_id != self._active_request_id:
+            return
+        if self.state is not PipelineState.RUNNING:
+            return
+        try:
+            stage = Stage(stage_key)
+        except ValueError:
+            return
+        self._set_stage(stage, 'running', progress=progress_val)
+        self._set_status(_STAGE_LABELS.get(stage, "Processing..."))
+
+    def _on_server_completed(self, request_id: str, output_dir: str):
+        if request_id != self._active_request_id:
+            return
+
+        stage = self._active_stage
+        if not stage:
+            return
+
+        from .atomic_swap import atomic_replace
+        project_dir = self._project.project_dir
+
+        _STAGE_TARGETS = {
+            Stage.FRAMES:          "nerfstudio/frames",
+            Stage.FEATURE_EXTRACT: "nerfstudio/feature_extract",
+            Stage.FEATURE_MATCH:   "nerfstudio/feature_match",
+            Stage.RECONSTRUCTION:  "nerfstudio/nerfstudio_data",
+            Stage.TRAINING:        "nerfstudio/outputs",
+            Stage.EXPORT:          "output.ply",
+        }
+
+        if project_dir:
+            target = project_dir / _STAGE_TARGETS.get(stage, stage.value)
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                atomic_replace(Path(output_dir), target)
+            except Exception as exc:
+                self._log(f"Swap failed, falling back to copy: {exc}")
+                if target.exists():
+                    shutil.rmtree(str(target), ignore_errors=True)
+                shutil.move(str(output_dir), str(target))
+
+        op = _STAGE_TO_OPERATION.get(stage)
+        op_stages = [s for s, o in _STAGE_TO_OPERATION.items() if o == op] if op else []
+        is_last_in_op = (not op_stages) or (stage == op_stages[-1])
+        if is_last_in_op and op:
+            self._project.bump_generation(op)
+            self._project.save_project()
+
+        self._server_bridge.request_acknowledge(request_id)
+
+        self._set_stage(stage, 'completed', 'Complete')
+        self._stage_paths[stage] = str(target) if project_dir else ""
+
+        if stage == Stage.RECONSTRUCTION and project_dir:
+            ws_data = project_dir / "nerfstudio" / "nerfstudio_data"
+            if ws_data.exists():
+                self._set_data_stage_paths(ws_data)
+
+        if stage == Stage.EXPORT and project_dir:
+            ply = project_dir / "output.ply"
+            if ply.exists():
+                self._load_ply_in_viewer(str(ply))
+
+        self._update_validity_ui()
+        self._cleanup_pending_workspace()
+
+        if self._stage_queue:
+            self._log(f"Stage {stage.value} complete, continuing pipeline...")
+            self._run_next_stage()
+        else:
+            self._set_status("Pipeline complete")
+            self._log("Pipeline complete!")
+            self._auto_save_project()
+            try:
+                self.pipeline_finish()
+            except MachineError:
+                pass
+
+    def _on_server_failed(self, request_id: str, error: str):
+        if request_id != self._active_request_id:
+            return
+        self._log(f"Server stage failed: {error}")
+        self._set_status("Pipeline failed")
+        self._stage_queue.clear()
+        self._cleanup_pending_workspace()
+        for s in Stage:
+            idx = self._stage_index(s)
+            if self._stages[idx]["status"] in ("pending", "running"):
+                self._set_stage(s, 'failed', 'Failed')
+                break
+        try:
+            self.pipeline_finish()
+        except MachineError:
+            pass
+
+    def _on_server_cancelled(self, request_id: str):
+        if request_id != self._active_request_id:
+            return
+        self._log("Operation cancelled")
+        self._stage_queue.clear()
+        self._cleanup_pending_workspace()
+        self._set_status("Cancelled")
+        try:
+            self.pipeline_finish()
+        except MachineError:
+            pass
+
+    def _on_server_acknowledged(self, request_id: str):
+        self._log(f"Server acknowledged: {request_id[:12]}...")
+
+    def _on_server_status(self, active_requests: list):
+        """Handle status response — process any completed requests from previous session."""
+        for req in active_requests:
+            status = req.get("status")
+            request_id = req.get("request_id", "")
+            op_str = req.get("operation", "")
+            depends_on = req.get("depends_on", {})
+
+            try:
+                op = Operation(op_str)
+            except ValueError:
+                continue
+
+            current_deps = self._project.current_depends_on(op)
+            deps_valid = all(
+                current_deps.get(k) == v for k, v in depends_on.items()
+            )
+
+            if status == "completed" and deps_valid:
+                output_dir = req.get("output_dir", "")
+                self._on_server_completed(request_id, output_dir)
+            elif status == "completed" and not deps_valid:
+                self._server_bridge.request_reject(request_id)
+                self._log(f"Rejected stale result for {op_str}")
+            elif status == "running" and deps_valid:
+                self._active_request_id = request_id
+                self._active_stage = op
+                try:
+                    self.pipeline_start()
+                except MachineError:
+                    pass
+                self._set_status(f"Resuming {op_str}...")
+            elif status == "running" and not deps_valid:
+                self._server_bridge.request_cancel(request_id)
+
+    def _cleanup_pending_workspace(self):
+        from .workspace import WorkspaceManager
+        wm = WorkspaceManager()
+        if self._pending_input_dir:
+            wm.delete(self._pending_input_dir)
+            self._pending_input_dir = None
+        if self._pending_output_dir:
+            wm.delete(self._pending_output_dir)
+            self._pending_output_dir = None
+        self._active_request_id = None
+        self._active_stage = None
+
+    def _update_validity_ui(self):
+        """Recompute operation validity and update stage entries."""
+        if not self._project.is_open:
+            return
+        states = self._project.all_operation_states()
+        for stage in Stage:
+            op = _STAGE_TO_OPERATION.get(stage)
+            if op:
+                idx = self._stage_index(stage)
+                if idx >= 0:
+                    self._stages[idx]["validity"] = states[op].value
+        self.stagesChanged.emit()
+        self.operationStatesChanged.emit()
+
+    def _start_server_stage(self, stage: Stage):
+        """Start a single pipeline stage via the server bridge."""
+        if not self._server_bridge or not self._server_connected:
+            self._log("Error: Not connected to processing server")
+            try:
+                self.pipeline_finish()
+            except MachineError:
+                pass
+            return
+
+        from .workspace import WorkspaceManager
+        wm = WorkspaceManager()
+        input_dir, output_dir = wm.create_input_output()
+        self._pending_input_dir = input_dir
+        self._pending_output_dir = output_dir
+        self._active_stage = stage
+
+        project_dir = self._project.project_dir
+        _STAGE_INPUT_SOURCES = {
+            Stage.FRAMES:          lambda pd: Path(self._video_path) if self._video_path else None,
+            Stage.FEATURE_EXTRACT: lambda pd: pd / "nerfstudio" / "frames" if pd else None,
+            Stage.FEATURE_MATCH:   lambda pd: pd / "nerfstudio" / "feature_extract" if pd else None,
+            Stage.RECONSTRUCTION:  lambda pd: pd / "nerfstudio" / "feature_match" if pd else None,
+            Stage.TRAINING:        lambda pd: pd / "nerfstudio" / "nerfstudio_data" if pd else None,
+            Stage.EXPORT:          lambda pd: pd / "nerfstudio" / "outputs" if pd else None,
+        }
+        source_fn = _STAGE_INPUT_SOURCES.get(stage)
+        source = source_fn(project_dir) if source_fn else None
+        if source and source.exists():
+            wm.clone_into(input_dir, source)
+
+        params = {}
+        if stage == Stage.FRAMES:
+            params["num_frames_target"] = self._max_frames if self._max_frames > 0 else 300
+        elif stage == Stage.TRAINING:
+            params["max_iterations"] = self._training_iterations
+
+        op = _STAGE_TO_OPERATION.get(stage)
+        depends_on = self._project.current_depends_on(op) if op else {}
+
+        self._server_bridge.request_run_stage(
+            project_id=self._project.project_uuid or "",
+            stage=stage.value,
+            input_dir=str(input_dir),
+            output_dir=str(output_dir),
+            depends_on=depends_on,
+            params=params,
+        )
+
+    def _run_next_stage(self):
+        """Pop the next stage from the queue and execute it via the server."""
+        if not self._stage_queue:
+            return
+
+        if not self._server_connected:
+            self._log("Connecting to server...")
+            self.connect_to_server()
+            return
 
         if not self._project.is_open:
             self._project.new_project(
@@ -968,215 +1206,17 @@ class Backend(QObject):
                 video_path=self._video_path,
                 settings=self._current_settings(),
             )
-        else:
-            self._project.update_settings(self._current_settings())
-            if self._video_path:
-                self._project.update_input(self._video_path)
-            for s in Stage:
-                self._project.update_stage(s, 'pending')
 
-        for s in Stage:
-            self._set_stage(s, 'pending', 'Waiting...')
+        stage = self._stage_queue.pop(0)
+        self._log(f"Starting {stage.value}...")
+        self._start_server_stage(stage)
 
-        max_frames = self._max_frames if self._max_frames > 0 else 300
-        workspace = str(self._project.workspace_dir or self._workspace / "nerfstudio")
-        output_ply = str(self._project.output_ply_path or self._workspace / "output.ply")
+    @pyqtSlot()
+    def connectToServer(self):
+        """QML-callable: initiate server connection."""
+        self.connect_to_server()
 
-        self._nerfstudio_worker = NerfstudioWorker(
-            video_path=self._video_path,
-            workspace_dir=workspace,
-            output_ply_path=output_ply,
-            max_iterations=self._training_iterations,
-            use_video_directly=True,
-            num_frames_target=max_frames
-        )
-        self._connect_nerfstudio_worker()
-        self._nerfstudio_worker.start()
-
-    def _connect_nerfstudio_worker(self):
-        w = self._nerfstudio_worker
-        w.progress.connect(self._on_nerfstudio_progress)
-        w.finished.connect(self._on_nerfstudio_finished)
-        w.error.connect(lambda msg: (self._log(f"Error: {msg}"), self._set_status("Error"), self._update_button_states()))
-        w.log.connect(self._log)
-        w.stage_data_completed.connect(self._on_stage_data_completed)
-        w.stage_training_completed.connect(self._on_stage_training_completed)
-
-    _STATUS_LABELS: dict[Stage, str] = {
-        Stage.FRAMES:          "Extracting frames...",
-        Stage.FEATURE_EXTRACT: "Extracting features...",
-        Stage.FEATURE_MATCH:   "Matching features...",
-        Stage.RECONSTRUCTION:  "Building reconstruction...",
-        Stage.TRAINING:        "Training Gaussian Splatting model...",
-        Stage.EXPORT:          "Exporting PLY...",
-    }
-
-    def _on_nerfstudio_progress(self, data: dict):
-        if self.state is not PipelineState.RUNNING:
-            return
-        stage = data.get('stage_key')
-        if not isinstance(stage, Stage):
-            return
-        status = data.get('status', 'running')
-        progress = data.get('progress', -1)
-        self._set_stage(stage, status, progress=progress)
-
-        if status == 'running':
-            self._set_status(self._STATUS_LABELS.get(stage, "Processing..."))
-        elif status == 'completed' and stage is Stage.EXPORT:
-            self._set_status("Pipeline complete")
-
-    def _on_nerfstudio_finished(self, result: dict):
-        was_cancelling = self.state is PipelineState.CANCELLING
-
-        try:
-            self.pipeline_finish()
-        except MachineError:
-            pass
-
-        if was_cancelling:
-            self._log("Operations cancelled")
-            self._set_status("Cancelled")
-            return
-
-        if result['success']:
-            output_path = result['output_path']
-            self._log("=" * 50)
-            self._log("Pipeline complete!")
-            self._log(f"Output PLY: {output_path}")
-            self._set_status("Pipeline complete")
-
-            for s in Stage:
-                self._set_stage(s, 'completed', 'Complete')
-
-            if not self._project.is_open:
-                self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-            self._project.update_stage(Stage.EXPORT, 'completed', ply_path=output_path)
-            self._stage_paths[Stage.EXPORT] = str(Path(output_path).parent)
-            self._auto_save_project()
-            self.windowTitleChanged.emit()
-            self.projectNameChanged.emit()
-            self.projectDirChanged.emit()
-
-            self._load_ply_in_viewer(output_path)
-        else:
-            self._log(f"Pipeline failed: {result['error']}")
-            self._set_status("Pipeline failed")
-
-            for s in Stage:
-                idx = self._stage_index(s)
-                if self._stages[idx]["status"] in ("pending", "running"):
-                    self._set_stage(s, 'failed', 'Failed')
-                    break
-
-    def _on_stage_data_completed(self, data_dir: str):
-        if not self._project.is_open:
-            self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-        images_path = str(Path(data_dir) / "images")
-        colmap_path = str(Path(data_dir) / "colmap")
-        self._project.update_stage(Stage.FRAMES, 'completed', path=images_path)
-        self._project.update_stage(Stage.FEATURE_EXTRACT, 'completed')
-        self._project.update_stage(Stage.FEATURE_MATCH, 'completed')
-        self._project.update_stage(Stage.RECONSTRUCTION, 'completed', path=data_dir)
-
-        self._stage_paths[Stage.FRAMES] = images_path
-        self._stage_paths[Stage.FEATURE_EXTRACT] = colmap_path
-        self._stage_paths[Stage.FEATURE_MATCH] = colmap_path
-        self._stage_paths[Stage.RECONSTRUCTION] = data_dir
-        self._scan_frame_images()
-        self._auto_save_project()
-
-    def _on_stage_training_completed(self, checkpoint_dir: str, latest_checkpoint: str):
-        if not self._project.is_open:
-            self._project.new_project(video_path=self._video_path, settings=self._current_settings())
-        self._project.update_stage(
-            Stage.TRAINING, 'completed',
-            checkpoint_dir=checkpoint_dir,
-            latest_checkpoint=latest_checkpoint,
-        )
-        # Track path for "Open Folder" button
-        self._stage_paths[Stage.TRAINING] = checkpoint_dir
-        self._auto_save_project()
-        self._update_button_states()
-
-    # ── Mock/COLMAP pipeline (non-nerfstudio) ──
-
-    def _start_video_processing(self):
-        self._log("Stage 1/3: Extracting frames from video...")
-        base_dir = self._project.project_dir or self._workspace
-        frames_dir = base_dir / "frames"
-        frames_dir.mkdir(exist_ok=True)
-        for f in frames_dir.glob("*.png"):
-            f.unlink()
-
-        max_frames = self._max_frames if self._max_frames > 0 else None
-
-        self._video_worker = VideoProcessingWorker(
-            self._video_path, str(frames_dir), sample_rate=5, max_frames=max_frames
-        )
-        self._video_worker.progress.connect(lambda d: self._set_status("Processing video frames..."))
-        self._video_worker.finished.connect(self._on_video_finished)
-        self._video_worker.error.connect(lambda msg: (self._log(f"Error: {msg}"), self._set_status("Error")))
-        self._video_worker.start()
-        self._update_button_states()
-
-    def _on_video_finished(self, result: dict):
-        self._video_worker = None
-        if result['success']:
-            self._log(f"Extracted {len(result['frame_paths'])} frames")
-            self._start_reconstruction(result['frame_paths'])
-        else:
-            self._log(f"Error: {result['error']}")
-            self._set_status("Failed")
-            try:
-                self.pipeline_finish()
-            except MachineError:
-                pass
-
-    def _start_reconstruction(self, frame_paths: list):
-        self._log("Stage 2/3: Performing 3D reconstruction...")
-        base_dir = self._project.project_dir or self._workspace
-        method = "colmap"
-        self._reconstruction_worker = ReconstructionWorker(
-            frame_paths, str(base_dir / "reconstruction"), method=method
-        )
-        self._reconstruction_worker.progress.connect(lambda d: self._set_status(f"Running {d['stage']}..."))
-        self._reconstruction_worker.finished.connect(self._on_reconstruction_finished)
-        self._reconstruction_worker.error.connect(lambda msg: (self._log(f"Error: {msg}"), self._set_status("Error")))
-        self._reconstruction_worker.start()
-
-    def _on_reconstruction_finished(self, result: dict):
-        self._reconstruction_worker = None
-        if result['success']:
-            self._log(f"Generated {result['data'].get('num_points', 0)} Gaussian splats")
-            self._start_ply_export(result['data'])
-        else:
-            self._log(f"Error: {result['error']}")
-            self._set_status("Failed")
-            try:
-                self.pipeline_finish()
-            except MachineError:
-                pass
-
-    def _start_ply_export(self, splat_data: dict):
-        self._log("Stage 3/3: Exporting to PLY format...")
-        output_ply = str(self._project.output_ply_path) if self._project.output_ply_path else str(self._workspace / "output.ply")
-        self._export_worker = PLYExportWorker(splat_data, output_ply)
-        self._export_worker.progress.connect(lambda d: self._set_status("Exporting PLY..."))
-        self._export_worker.finished.connect(self._on_export_finished)
-        self._export_worker.error.connect(lambda msg: (self._log(f"Error: {msg}"), self._set_status("Error")))
-        self._export_worker.start()
-
-    def _on_export_finished(self, result: dict):
-        self._export_worker = None
-        if result['success']:
-            self._log(f"Conversion complete! Output: {result['output_path']}")
-            self._set_status("Complete")
-            self._load_ply_in_viewer(result['output_path'])
-        else:
-            self._log(f"Error: {result['error']}")
-            self._set_status("Failed")
-        try:
-            self.pipeline_finish()
-        except MachineError:
-            pass
+    @pyqtSlot()
+    def disconnectFromServer(self):
+        """QML-callable: disconnect from server."""
+        self.disconnect_from_server()

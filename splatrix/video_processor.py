@@ -2,14 +2,23 @@
 
 from pathlib import Path
 from typing import Optional, Callable, Dict
-import cv2
+
 import numpy as np
+
+cv2 = None  # lazy – loaded on first use
 
 try:
     import av
     PYAV_AVAILABLE = True
 except ImportError:
     PYAV_AVAILABLE = False
+
+
+def _ensure_cv2():
+    global cv2
+    if cv2 is None:
+        import importlib
+        cv2 = importlib.import_module("cv2")
 
 
 class VideoProcessor:
@@ -71,6 +80,7 @@ class VideoProcessor:
                 print(f"PyAV failed, using OpenCV fallback: {e}")
         
         # OpenCV fallback
+        _ensure_cv2()
         cap = cv2.VideoCapture(str(video_path))
         
         if not cap.isOpened():
@@ -139,6 +149,7 @@ class VideoProcessor:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
+        _ensure_cv2()
         cap = cv2.VideoCapture(str(self.video_path))
         frame_paths: list[Path] = []
         frame_idx = 0
@@ -177,6 +188,7 @@ class VideoProcessor:
         if not self.video_path:
             return None
         
+        _ensure_cv2()
         cap = cv2.VideoCapture(str(self.video_path))
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
